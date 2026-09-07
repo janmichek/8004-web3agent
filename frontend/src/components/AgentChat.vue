@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from 'vue'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import { chatWithAgent, fetchAgents, type AgentSummary, type ChatEvent } from '../api'
+
+marked.setOptions({ breaks: true, gfm: true })
+
+function renderMarkdown(src: string): string {
+  const raw = marked.parse(src, { async: false }) as string
+  const clean = DOMPurify.sanitize(raw, { USE_PROFILES: { html: true } })
+  return clean.replace(/<a /g, '<a target="_blank" rel="noopener noreferrer" ')
+}
 
 type Bubble =
   | { kind: 'user'; text: string }
@@ -117,8 +127,8 @@ onMounted(() => {
       </p>
 
       <template v-for="(b, i) in bubbles" :key="i">
-        <div v-if="b.kind === 'user'" class="bubble user">{{ b.text }}</div>
-        <div v-else-if="b.kind === 'agent'" class="bubble agent">{{ b.text }}</div>
+        <div v-if="b.kind === 'user'" class="bubble user md" v-html="renderMarkdown(b.text)"></div>
+        <div v-else-if="b.kind === 'agent'" class="bubble agent md" v-html="renderMarkdown(b.text)"></div>
         <div v-else-if="b.kind === 'error'" class="bubble error">{{ b.text }}</div>
         <div v-else class="event mono">
           <template v-if="b.event.type === 'tool_call'">
@@ -230,9 +240,24 @@ onMounted(() => {
   border-radius: 0.55rem;
   font-size: 0.92rem;
   line-height: 1.45;
-  white-space: pre-wrap;
   word-break: break-word;
 }
+
+.bubble.md :deep(p) { margin: 0.35em 0; }
+.bubble.md :deep(p:first-child) { margin-top: 0; }
+.bubble.md :deep(p:last-child) { margin-bottom: 0; }
+.bubble.md :deep(a) { color: var(--accent); text-decoration: underline; word-break: break-all; }
+.bubble.md :deep(a:hover) { opacity: 0.85; }
+.bubble.md :deep(strong) { font-weight: 700; }
+.bubble.md :deep(h1), .bubble.md :deep(h2), .bubble.md :deep(h3) { margin: 0.6em 0 0.3em; line-height: 1.25; }
+.bubble.md :deep(h1) { font-size: 1.15em; }
+.bubble.md :deep(h2) { font-size: 1.08em; }
+.bubble.md :deep(h3) { font-size: 1em; }
+.bubble.md :deep(code) { font-size: 0.85em; background: color-mix(in oklab, var(--border) 60%, transparent); padding: 0.15em 0.35em; border-radius: 0.25em; }
+.bubble.md :deep(pre) { overflow-x: auto; padding: 0.6em; border-radius: 0.35em; background: color-mix(in oklab, var(--bg) 80%, var(--surface-2)); margin: 0.5em 0; }
+.bubble.md :deep(pre code) { background: none; padding: 0; }
+.bubble.md :deep(ul), .bubble.md :deep(ol) { margin: 0.35em 0; padding-left: 1.4em; }
+.bubble.user.md :deep(a) { color: #041018; text-decoration-thickness: 1.5px; }
 
 .bubble.user {
   align-self: flex-end;
