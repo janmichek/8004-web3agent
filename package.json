@@ -18,6 +18,9 @@
     "create-agent": "npx tsx src/cli/create-agent.ts",
     "deploy": "npx tsx src/cli/deploy.ts",
     "chat": "npx tsx src/cli/chat.ts",
+    "serve": "npx tsx src/server/api.ts",
+    "frontend": "npm run dev --prefix frontend",
+    "frontend:build": "npm run build --prefix frontend",
     "test": "npx tsx src/cli/test-workflow.ts"
   },
   "keywords": [
@@ -34,6 +37,7 @@
     "@anthropic-ai/sdk": "^0.39.0",
     "@blockbyvlog/agent0-sdk": "^1.5.6",
     "@clack/prompts": "^1.1.0",
+    "@hono/node-server": "^2.1.1",
     "@langchain/anthropic": "^0.3.0",
     "@langchain/core": "^0.3.0",
     "@langchain/langgraph": "^0.2.0",
@@ -41,6 +45,7 @@
     "@openrouter/sdk": "*",
     "dotenv": "^16.4.0",
     "ethers": "^6.13.0",
+    "hono": "^4.13.7",
     "qrcode-terminal": "^0.12.0",
     "viem": "^2.47.4",
     "zod": "^3.23.0"

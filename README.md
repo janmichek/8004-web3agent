@@ -81,7 +81,10 @@ web3agent/
       chat.ts           Interactive chat with an existing agent
       setup.ts          First-run master wallet setup
       test-workflow.ts  End-to-end test
+    server/
+      api.ts            HTTP API for the Vue frontend (agents + chat)
     index.ts            Public API barrel
+  frontend/             Vue 3 + wagmi console (balances + chat)
   agents/               Runtime data (gitignored)
     <agent-name>/
       wallet.json       Agent private key (never committed)
@@ -125,6 +128,17 @@ First-run setup. Generates a master wallet private key, saves it to `.env`, and 
 ### `npm run test`
 
 End-to-end test: creates an agent, funds it, and asks the agent to check its balance.
+
+### Frontend (Vue + wagmi)
+
+Wallet balances and agent chat UI:
+
+```bash
+npm run serve      # API on :8787
+npm run frontend   # Vite UI on :5173
+```
+
+See [`frontend/README.md`](./frontend/README.md).
 
 ---
 
