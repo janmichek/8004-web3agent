@@ -27,6 +27,7 @@ import {
   resolveToolsFromConfig,
   buildCapabilitySummary,
 } from "../core/agent-config.js";
+import { ethers } from "ethers";
 import { getNetworkNameByChainId, getNetworkConfig, getRpcUrl } from "../core/config.js";
 import type { Skill } from "../actions/types.js";
 
@@ -39,24 +40,90 @@ type ChatEvent =
   | { type: "tool_result"; content: string }
   | { type: "message"; content: string };
 
+function agentEnvSuffix(name: string): string {
+  return name.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+}
+
+function listEnvAgents(): string[] {
+  const agents = new Set<string>();
+  for (const key of Object.keys(process.env)) {
+    // AGENT_<SUFFIX>_CONFIG or AGENT_<SUFFIX>_PRIVATE_KEY
+    const m = key.match(/^AGENT_(.+)_CONFIG$/) || key.match(/^AGENT_(.+)_PRIVATE_KEY$/);
+    if (m) {
+      const suffix = m[1];
+      // reverse to original name is ambiguous, so we store mapping via config name field
+      // Instead, derive from config JSON's name or brute-force by checking all env suffixes against known pattern
+      // For now, extract name from config JSON if available
+      const raw = process.env[key];
+      if (raw && key.endsWith("_CONFIG")) {
+        try {
+          const parsed = JSON.parse(raw) as { name?: string };
+          if (parsed.name) agents.add(parsed.name);
+          else agents.add(suffix.toLowerCase().replace(/_/g, "-"));
+        } catch {
+          agents.add(suffix.toLowerCase().replace(/_/g, "-"));
+        }
+      } else if (raw) {
+        // private key only — try to find matching config env, otherwise use suffix as name
+        const configKey = `AGENT_${suffix}_CONFIG`;
+        const configRaw = process.env[configKey];
+        if (configRaw) {
+          try {
+            const parsed = JSON.parse(configRaw) as { name?: string };
+            if (parsed.name) agents.add(parsed.name);
+          } catch { /* ignore */ }
+        }
+        // fallback: if we haven't added yet, use suffix lowercased
+        if (!agents.has(suffix.toLowerCase().replace(/_/g, "-"))) {
+          // Only add if not already covered by config
+          const hasConfig = [...agents].some((a) => agentEnvSuffix(a) === suffix);
+          if (!hasConfig) agents.add(suffix.toLowerCase().replace(/_/g, "-"));
+        }
+      }
+    }
+  }
+  return [...agents];
+}
+
 function listExistingAgents(): string[] {
-  if (!fs.existsSync(AGENTS_DIR)) return [];
-  return fs
-    .readdirSync(AGENTS_DIR, { withFileTypes: true })
-    .filter((e) => e.isDirectory() && fs.existsSync(path.join(AGENTS_DIR, e.name, "wallet.json")))
-    .map((e) => e.name);
+  const fromFs = new Set<string>();
+  const dirsToScan = [AGENTS_DIR];
+  if (process.env.VERCEL) dirsToScan.push(path.resolve(process.cwd(), "agents"));
+  for (const dir of dirsToScan) {
+    if (!fs.existsSync(dir)) continue;
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!e.isDirectory()) continue;
+      // On Vercel, existence of wallet via env is enough; on FS check wallet.json
+      const walletPath = path.join(dir, e.name, "wallet.json");
+      const envPk = process.env[`AGENT_${agentEnvSuffix(e.name)}_PRIVATE_KEY`];
+      if (fs.existsSync(walletPath) || envPk) fromFs.add(e.name);
+    }
+  }
+  // Merge env agents
+  for (const n of listEnvAgents()) fromFs.add(n);
+  return [...fromFs];
 }
 
 function publicAgentSummary(name: string) {
   const config = loadAgentConfig(name);
-  const walletPath = path.join(AGENTS_DIR, name, "wallet.json");
   let walletAddress: string | undefined = config?.walletAddress;
-  if (!walletAddress && fs.existsSync(walletPath)) {
-    try {
-      const raw = JSON.parse(fs.readFileSync(walletPath, "utf-8")) as { address?: string };
-      walletAddress = raw.address;
-    } catch {
-      /* ignore */
+  // Try env private key first
+  if (!walletAddress) {
+    const envPk = process.env[`AGENT_${agentEnvSuffix(name)}_PRIVATE_KEY`];
+    if (envPk) {
+      try { walletAddress = new ethers.Wallet(envPk).address; } catch { /* ignore */ }
+    }
+  }
+  if (!walletAddress) {
+    const candidates = [path.join(AGENTS_DIR, name, "wallet.json")];
+    if (process.env.VERCEL) candidates.push(path.join(path.resolve(process.cwd(), "agents"), name, "wallet.json"));
+    for (const walletPath of candidates) {
+      if (!fs.existsSync(walletPath)) continue;
+      try {
+        const raw = JSON.parse(fs.readFileSync(walletPath, "utf-8")) as { address?: string };
+        walletAddress = raw.address;
+        break;
+      } catch { /* ignore */ }
     }
   }
 
@@ -163,12 +230,14 @@ async function runChat(agentName: string, message: string): Promise<{
   return { reply: reply || "(no response)", events };
 }
 
-const app = new Hono();
+export const app = new Hono();
+
+const isVercel = !!process.env.VERCEL;
 
 app.use(
   "*",
   cors({
-    origin: ["http://localhost:5173", "http://127.0.0.1:5173"],
+    origin: isVercel ? "*" : ["http://localhost:5173", "http://127.0.0.1:5173"],
     allowMethods: ["GET", "POST", "OPTIONS"],
     allowHeaders: ["Content-Type"],
   }),
@@ -303,5 +372,9 @@ app.post("/api/agents/:name/chat", async (c) => {
   }
 });
 
-console.log(`web3agent API listening on http://localhost:${PORT}`);
-serve({ fetch: app.fetch, port: PORT });
+if (!process.env.VERCEL) {
+  console.log(`web3agent API listening on http://localhost:${PORT}`);
+  serve({ fetch: app.fetch, port: PORT });
+}
+
+export default app;

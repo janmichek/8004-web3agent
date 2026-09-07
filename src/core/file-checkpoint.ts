@@ -8,6 +8,7 @@
  */
 
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { MemorySaver } from "@langchain/langgraph";
 import { AGENTS_DIR } from "./wallet.js";
@@ -19,16 +20,23 @@ import { AGENTS_DIR } from "./wallet.js";
  * Call `flush()` after each invoke to persist changes.
  */
 export function createFileCheckpointer(agentName: string) {
-  const memoryPath = path.join(AGENTS_DIR, agentName, "memory.json");
+  // On Vercel the filesystem is read-only except /tmp — use /tmp for ephemeral memory
+  // Memory is per-invocation only on Vercel; for persistence use external store
+  const isVercel = !!process.env.VERCEL;
+  const baseDir = isVercel ? path.join(os.tmpdir(), "agents") : AGENTS_DIR;
+  const memoryPath = path.join(baseDir, agentName, "memory.json");
+  // Also try original AGENTS_DIR as fallback for read (local dev bundle on Vercel)
+  const fallbackPath = isVercel ? path.join(AGENTS_DIR, agentName, "memory.json") : null;
   const saver = new MemorySaver();
 
-  // Load existing state
-  if (fs.existsSync(memoryPath)) {
+  // Load existing state — try tmp first, then fallback
+  const loadPaths = fallbackPath ? [memoryPath, fallbackPath] : [memoryPath];
+  for (const p of loadPaths) {
+    if (!fs.existsSync(p)) continue;
     try {
-      const raw = fs.readFileSync(memoryPath, "utf-8");
+      const raw = fs.readFileSync(p, "utf-8");
       const data = JSON.parse(raw);
       if (data.storage) {
-        // Restore Uint8Array values from base64
         for (const threadId of Object.keys(data.storage)) {
           saver.storage[threadId] = {};
           for (const ns of Object.keys(data.storage[threadId])) {
@@ -57,10 +65,10 @@ export function createFileCheckpointer(agentName: string) {
           }
         }
       }
-      console.log(`[memory] Loaded conversation from agents/${agentName}/memory.json`);
+      console.log(`[memory] Loaded conversation from ${p}`);
+      break;
     } catch {
-      // Corrupted file, start fresh
-      console.warn(`[memory] Could not load memory file, starting fresh.`);
+      console.warn(`[memory] Could not load memory file ${p}, starting fresh.`);
     }
   }
 
@@ -99,8 +107,17 @@ export function createFileCheckpointer(agentName: string) {
     }
     data.writes = writes;
 
-    fs.mkdirSync(path.dirname(memoryPath), { recursive: true });
-    fs.writeFileSync(memoryPath, JSON.stringify(data), "utf-8");
+    try {
+      fs.mkdirSync(path.dirname(memoryPath), { recursive: true });
+      fs.writeFileSync(memoryPath, JSON.stringify(data), "utf-8");
+    } catch (err) {
+      // On Vercel the filesystem may be read-only or /tmp may be unavailable — degrade gracefully
+      if (isVercel) {
+        console.warn(`[memory] Vercel flush skipped (ephemeral): ${(err as Error).message}`);
+      } else {
+        throw err;
+      }
+    }
   }
 
   return { saver, flush };

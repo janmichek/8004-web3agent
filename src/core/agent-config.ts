@@ -76,36 +76,82 @@ export interface AgentConfig {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers for Vercel env injection
+// ---------------------------------------------------------------------------
+
+function agentEnvSuffix(name: string): string {
+  return name.toUpperCase().replace(/[^A-Z0-9]/g, "_")
+}
+
+function getAgentConfigEnvName(agentName: string): string {
+  return `AGENT_${agentEnvSuffix(agentName)}_CONFIG`
+}
+
+function parseAgentConfigEnv(agentName: string): AgentConfig | null {
+  const envName = getAgentConfigEnvName(agentName)
+  const raw = process.env[envName]
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed as AgentConfig
+  } catch {
+    console.warn(`[config] Invalid JSON in ${envName}`)
+    return null
+  }
+}
+
+function normalizeConfig(parsed: Record<string, unknown>): AgentConfig {
+  if (parsed.actions && !(parsed as Record<string, unknown>).metadata) {
+    return migrateLegacyConfig(parsed)
+  }
+  if ((parsed as Record<string, unknown>).metadata && (parsed as unknown as AgentConfig).metadata?.standaloneTools && !(parsed as unknown as AgentConfig).metadata?.tools) {
+    const m = (parsed as unknown as AgentConfig).metadata as unknown as Record<string, unknown>
+    m.tools = m.standaloneTools as string[]
+    delete m.standaloneTools
+  }
+  return parsed as unknown as AgentConfig
+}
+
+// ---------------------------------------------------------------------------
 // Persistence
 // ---------------------------------------------------------------------------
 
 /** @notice Write agent config to disk. */
 export function saveAgentConfig(agentName: string, config: AgentConfig): void {
-  const agentDir = path.join(AGENTS_DIR, agentName)
-  fs.mkdirSync(agentDir, { recursive: true })
-  const configPath = path.join(agentDir, "agent-config.json")
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8")
+  // On Vercel, also mirror to /tmp and warn that env should be used for persistence
+  try {
+    const agentDir = path.join(AGENTS_DIR, agentName)
+    fs.mkdirSync(agentDir, { recursive: true })
+    const configPath = path.join(agentDir, "agent-config.json")
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8")
+  } catch (err) {
+    if (process.env.VERCEL) {
+      console.warn(`[config] Vercel write failed, set ${getAgentConfigEnvName(agentName)} instead:`, err)
+    } else {
+      throw err
+    }
+  }
 }
 
 /** @notice Read agent config from disk. Returns null if not found. */
 export function loadAgentConfig(agentName: string): AgentConfig | null {
-  const configPath = path.join(AGENTS_DIR, agentName, "agent-config.json")
-  if (!fs.existsSync(configPath)) return null
-  const raw = fs.readFileSync(configPath, "utf-8")
-  const parsed = JSON.parse(raw)
+  // 1) Env var takes precedence on Vercel
+  const fromEnv = parseAgentConfigEnv(agentName)
+  if (fromEnv) return normalizeConfig(fromEnv as unknown as Record<string, unknown>)
 
-  // Migrate legacy configs that have top-level actions/tools
-  if (parsed.actions && !parsed.metadata) {
-    return migrateLegacyConfig(parsed)
+  // 2) Try filesystem in AGENTS_DIR (/tmp on Vercel) and fallback to cwd/agents
+  const candidates = [AGENTS_DIR]
+  if (process.env.VERCEL) candidates.push(path.resolve(process.cwd(), "agents"))
+  for (const dir of candidates) {
+    const configPath = path.join(dir, agentName, "agent-config.json")
+    if (!fs.existsSync(configPath)) continue
+    try {
+      const raw = fs.readFileSync(configPath, "utf-8")
+      const parsed = JSON.parse(raw)
+      return normalizeConfig(parsed)
+    } catch { /* ignore */ }
   }
-
-  // Migrate metadata.standaloneTools → metadata.tools
-  if (parsed.metadata?.standaloneTools && !parsed.metadata?.tools) {
-    parsed.metadata.tools = parsed.metadata.standaloneTools
-    delete parsed.metadata.standaloneTools
-  }
-
-  return parsed as AgentConfig
+  return null
 }
 
 /** @notice Migrate pre-ERC-8004 configs to the new schema. */
