@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { useAccount, useConnect, useDisconnect, useSwitchChain } from '@wagmi/vue'
+import { computed, onMounted, ref, unref, watch } from 'vue'
+import { useAccount, useBalance, useConnect, useDisconnect, useSwitchChain } from '@wagmi/vue'
 import { arbitrum, arbitrumSepolia } from '@wagmi/vue/chains'
+import { formatEther } from 'viem'
 import { ensureArbitrumSepolia, getInjectedChainId } from '../chain'
 
 const { address, isConnected, status, chainId: accountChainId } = useAccount()
@@ -51,6 +52,15 @@ const wrongNetwork = computed(
   () => isConnected.value && activeChainId.value !== arbitrumSepolia.id,
 )
 
+const eth = useBalance({ address: address })
+const ethDisplay = computed(() => {
+  if (!isConnected.value || !address.value) return null
+  if (unref(eth.isFetching) && unref(eth.data) === undefined) return '…'
+  const d = unref(eth.data)
+  if (d?.value === undefined) return null
+  return `${Number(formatEther(d.value)).toPrecision(5)} ETH`
+})
+
 function connectWallet() {
   const connector = connectors[0]
   if (connector) connect({ connector })
@@ -91,6 +101,7 @@ async function onSwitchClick() {
           {{ switching ? 'Switching…' : wrongNetwork ? `Switch · ${chainLabel}` : chainLabel }}
         </button>
         <span class="addr mono">{{ shortAddress }}</span>
+        <span v-if="ethDisplay" class="balance mono">{{ ethDisplay }}</span>
         <button type="button" class="btn ghost" @click="disconnect()">Disconnect</button>
       </template>
       <button
@@ -160,6 +171,15 @@ async function onSwitchClick() {
 
 .addr {
   font-size: 0.85rem;
+  color: var(--ink);
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  background: var(--surface-2);
+}
+
+.balance {
+  font-size: 0.82rem;
   color: var(--ink);
   padding: 0.35rem 0.55rem;
   border: 1px solid var(--border);

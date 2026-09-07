@@ -1,15 +1,37 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useQueryClient } from '@tanstack/vue-query'
 import WalletBar from './components/WalletBar.vue'
-import BalancePanel from './components/BalancePanel.vue'
-import FundAgent from './components/FundAgent.vue'
+import AgentWallet from './components/AgentWallet.vue'
 import AgentChat from './components/AgentChat.vue'
 import type { AgentSummary } from './api'
+
+function networkSlug(chainId: number): string {
+  if (chainId === 42161) return 'arbitrum-one'
+  if (chainId === 421614) return 'arbitrum-sepolia'
+  return 'arbitrum-sepolia'
+}
 
 const selectedAgent = ref<AgentSummary | null>(null)
 const refreshKey = ref(0)
 const queryClient = useQueryClient()
+
+function extractNumericId(agentId: string): string {
+  // agentId may be "421614:204" or "eip155:421614:204" – we want the trailing numeric part
+  const parts = agentId.split(':')
+  return parts[parts.length - 1] || agentId
+}
+
+const scanId = computed(() => {
+  if (!selectedAgent.value?.agentId) return null
+  return extractNumericId(selectedAgent.value.agentId)
+})
+
+const scanUrl = computed(() => {
+  if (!scanId.value) return null
+  const slug = networkSlug(selectedAgent.value!.walletChainId)
+  return `https://testnet.8004scan.io/agents/${slug}/${scanId.value}`
+})
 
 function onSelect(agent: AgentSummary | null) {
   selectedAgent.value = agent
@@ -27,25 +49,26 @@ function onFunded() {
 
     <main class="layout">
       <aside class="side">
-        <BalancePanel label="Your wallet" :refresh-key="refreshKey" />
-        <BalancePanel
-          v-if="selectedAgent?.walletAddress"
-          label="Agent wallet"
-          :watch-address="selectedAgent.walletAddress"
-          :refresh-key="refreshKey"
-        />
-        <FundAgent
+        <AgentWallet
           :agent-address="selectedAgent?.walletAddress"
           :agent-name="selectedAgent?.name"
+          :refresh-key="refreshKey"
           @funded="onFunded"
         />
 
         <section v-if="selectedAgent" class="meta">
           <h2>{{ selectedAgent.name }}</h2>
           <dl>
+            <div v-if="selectedAgent.walletAddress">
+              <dt>Wallet</dt>
+              <dd class="mono">{{ selectedAgent.walletAddress }}</dd>
+            </div>
             <div v-if="selectedAgent.agentId">
               <dt>ERC-8004</dt>
-              <dd class="mono">{{ selectedAgent.agentId }}</dd>
+              <dd class="mono">
+                <a v-if="scanUrl && scanId" :href="scanUrl" target="_blank" rel="noopener noreferrer">#{{ scanId }} ↗</a>
+                <span v-else>#{{ selectedAgent.agentId }}</span>
+              </dd>
             </div>
             <div>
               <dt>Tools</dt>
@@ -134,6 +157,15 @@ function onFunded() {
   margin: 0.15rem 0 0;
   font-size: 0.85rem;
   word-break: break-all;
+}
+
+.meta dd a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.meta dd a:hover {
+  text-decoration: underline;
 }
 
 @media (max-width: 860px) {
