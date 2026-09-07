@@ -68,13 +68,17 @@ function onFunded() {
 
 <style scoped>
 .shell {
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .layout {
   flex: 1;
+  min-height: 0;
+  overflow: hidden;
   display: grid;
   grid-template-columns: minmax(16rem, 22rem) 1fr;
   gap: 1.25rem;
@@ -89,10 +93,15 @@ function onFunded() {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .main {
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .meta {
@@ -131,6 +140,15 @@ function onFunded() {
   .layout {
     grid-template-columns: 1fr;
     padding: 1rem;
+    overflow-y: auto;
+  }
+  .side {
+    overflow: visible;
+    flex-shrink: 0;
+  }
+  .main {
+    flex: 1;
+    min-height: 24rem;
   }
 }
 </style>

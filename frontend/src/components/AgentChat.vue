@@ -152,8 +152,8 @@ onMounted(() => {
 .chat {
   display: flex;
   flex-direction: column;
-  min-height: 28rem;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
@@ -204,6 +204,7 @@ onMounted(() => {
 
 .thread {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 1rem;
   display: flex;
@@ -307,9 +308,6 @@ onMounted(() => {
 }
 
 @media (max-width: 640px) {
-  .chat {
-    min-height: 24rem;
-  }
   .composer {
     grid-template-columns: 1fr;
   }
