@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/vue-query'
 import WalletBar from './components/WalletBar.vue'
 import AgentPicker from './components/AgentPicker.vue'
 import AgentWallet from './components/AgentWallet.vue'
+import AgentMemory from './components/AgentMemory.vue'
 import AgentChat from './components/AgentChat.vue'
 import CreateAgent from './components/CreateAgent.vue'
 import type { AgentSummary } from './api'
@@ -49,6 +50,10 @@ function onFunded() {
   void queryClient.invalidateQueries()
 }
 
+function onMemoryChat() {
+  refreshKey.value += 1
+}
+
 function onCreated(agent: AgentSummary) {
   showCreate.value = false
   selectedAgent.value = agent
@@ -80,6 +85,8 @@ function onCreated(agent: AgentSummary) {
           :refresh-key="refreshKey"
           @funded="onFunded"
         />
+
+        <AgentMemory :agent="selectedAgent" :refresh-key="refreshKey" />
       </aside>
 
       <div class="main">
@@ -88,7 +95,7 @@ function onCreated(agent: AgentSummary) {
           @created="onCreated"
           @cancel="showCreate = false"
         />
-        <AgentChat v-else :agent="selectedAgent" />
+        <AgentChat v-else :agent="selectedAgent" @chat="onMemoryChat" />
       </div>
     </main>
   </div>

@@ -26,6 +26,8 @@ const props = defineProps<{
   agentName?: string | null
 }>()
 
+const emit = defineEmits<{ chat: [] }>()
+
 const resolvedName = (): string | null => {
   if (props.agent?.name) return props.agent.name
   if (props.agentName) return props.agentName
@@ -74,11 +76,13 @@ async function send() {
     if (lastSuccessTx && props.agent?.agentId) {
       bubbles.value.push({ kind: 'rate', txHash: lastSuccessTx })
     }
+    emit('chat')
   } catch (err) {
     bubbles.value.push({
       kind: 'error',
       text: err instanceof Error ? err.message : String(err),
     })
+    emit('chat')
   } finally {
     busy.value = false
     await scrollBottom()

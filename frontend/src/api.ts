@@ -157,6 +157,41 @@ export function fetchReputation(agentId: string, tag?: string) {
   )
 }
 
+export type MemoryMessage = {
+  role: 'user' | 'assistant' | 'tool' | 'system' | 'unknown'
+  content: string
+  name?: string
+  toolCalls?: { name: string; args: unknown }[]
+  id?: string
+}
+
+export type MemorySummary = {
+  agent: string
+  exists: boolean
+  empty: boolean
+  threads: string[]
+  checkpointCount: number
+  firstActive: string | null
+  lastActive: string | null
+  stats: {
+    totalMessages: number
+    humanCount: number
+    aiCount: number
+    toolCount: number
+    toolCallsByName: Record<string, number>
+    uniqueRecipients: string[]
+    txHashes: string[]
+    totalEthSent: string
+  }
+  summary: string
+  preview: MemoryMessage[]
+  recentTxHashes: string[]
+}
+
+export function fetchMemory(agentName: string) {
+  return request<MemorySummary>(`/api/agents/${encodeURIComponent(agentName)}/memory`)
+}
+
 /** Detect a mined/success tx hash in agent tool output (not an Error: line). */
 export function extractSuccessfulTxHash(content: string): string | null {
   if (/^\s*Error:/i.test(content) || /\bError:/i.test(content.split('\n')[0] ?? '')) return null

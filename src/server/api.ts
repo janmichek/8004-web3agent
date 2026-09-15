@@ -39,6 +39,7 @@ import {
 import { ACTION_REGISTRY, TOOL_REGISTRY, getActionByName } from "../core/action-registry.js";
 import { saveAgentConfig, type AgentConfig } from "../core/agent-config.js";
 import { registerAgent } from "../core/registry.js";
+import { readAgentMemory } from "../core/memory-reader.js";
 import type { Skill } from "../actions/types.js";
 
 dotenv.config();
@@ -550,6 +551,20 @@ app.post("/api/agents/:name/fund", async (c) => {
       to: summary.walletAddress,
       from: getMasterWallet().address,
     });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return c.json({ error: msg }, 500);
+  }
+});
+
+app.get("/api/agents/:name/memory", (c) => {
+  const name = c.req.param("name");
+  if (!listExistingAgents().includes(name)) {
+    return c.json({ error: "Agent not found" }, 404);
+  }
+  try {
+    const memory = readAgentMemory(name);
+    return c.json(memory);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return c.json({ error: msg }, 500);
