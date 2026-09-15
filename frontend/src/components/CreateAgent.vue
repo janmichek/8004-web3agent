@@ -12,8 +12,6 @@ type Phase =
   | 'env'
   | 'name'
   | 'configure'
-  | 'pick-actions'
-  | 'pick-tools'
   | 'fund'
   | 'creating'
   | 'done'
@@ -84,19 +82,55 @@ onMounted(() => {
   void loadCatalog()
 })
 
+// Mutual exclusivity: transfer-eth bundles send_eth + get_token_balance
+const TRANSFER_ETH_TOOLS = ['send_eth', 'get_token_balance'] as const
+const TRANSFER_ETH_ACTION = 'transfer-eth'
+
+function isToolPale(name: string): boolean {
+  return (TRANSFER_ETH_TOOLS as readonly string[]).includes(name) && selectedActions.value.includes(TRANSFER_ETH_ACTION)
+}
+
+function isActionPale(name: string): boolean {
+  if (name !== TRANSFER_ETH_ACTION) return false
+  // Pale when both constituent tools are selected as standalone (group-level exclusivity)
+  // Also pale when any single constituent is selected — keeps visual cue symmetric
+  // Choose ANY to give earlier feedback; switch to .every if strict group exclusivity is desired
+  return TRANSFER_ETH_TOOLS.some((t) => selectedTools.value.includes(t))
+}
+
 function toggleAction(name: string) {
   const i = selectedActions.value.indexOf(name)
-  if (i >= 0) selectedActions.value.splice(i, 1)
-  else selectedActions.value.push(name)
-  // Drop standalone tools that are now included via an action
-  selectedTools.value = selectedTools.value.filter((t) => !actionToolNames.value.has(t))
+  const isSelected = i >= 0
+  if (isSelected) {
+    selectedActions.value.splice(i, 1)
+  } else {
+    // Selecting transfer-eth deselects its constituent standalone tools
+    if (name === TRANSFER_ETH_ACTION) {
+      selectedTools.value = selectedTools.value.filter((t) => !(TRANSFER_ETH_TOOLS as readonly string[]).includes(t))
+    }
+    selectedActions.value.push(name)
+  }
 }
 
 function toggleTool(name: string) {
-  if (actionToolNames.value.has(name)) return
+  const isTransferTool = (TRANSFER_ETH_TOOLS as readonly string[]).includes(name)
+  const transferActionSelected = selectedActions.value.includes(TRANSFER_ETH_ACTION)
+
+  // Selecting a constituent tool deselects the transfer-eth action (vice versa)
+  if (isTransferTool && transferActionSelected) {
+    const idx = selectedActions.value.indexOf(TRANSFER_ETH_ACTION)
+    if (idx >= 0) selectedActions.value.splice(idx, 1)
+  }
+
   const i = selectedTools.value.indexOf(name)
   if (i >= 0) selectedTools.value.splice(i, 1)
   else selectedTools.value.push(name)
+
+  // If both constituent tools are now individually selected, ensure action stays deselected
+  if (isTransferTool && selectedTools.value.includes('send_eth') && selectedTools.value.includes('get_token_balance')) {
+    const ai = selectedActions.value.indexOf(TRANSFER_ETH_ACTION)
+    if (ai >= 0) selectedActions.value.splice(ai, 1)
+  }
 }
 
 function goConfigure() {
@@ -196,76 +230,44 @@ function openChat() {
       </div>
     </div>
 
-    <!-- Configure menu (mirrors CLI select loop) -->
+    <!-- Configure (step 3) — flat tools & actions -->
     <div v-else-if="phase === 'configure'" class="body">
-      <p class="step-label">Configure your agent</p>
-      <div class="menu">
-        <button type="button" class="menu-item" @click="phase = 'pick-actions'">
-          <span class="menu-title">Actions</span>
-          <span class="menu-hint">Opinionated bundles (skill + tools)</span>
-        </button>
-        <button type="button" class="menu-item" @click="phase = 'pick-tools'">
-          <span class="menu-title">Tools</span>
-          <span class="menu-hint">Standalone tools, no reasoning layer</span>
-        </button>
-      </div>
-      <pre class="summary">{{ selectionSummary }}</pre>
-      <div class="nav">
-        <button type="button" class="btn ghost" @click="phase = 'name'">Back</button>
-        <button type="button" class="btn primary" @click="phase = 'fund'">Continue</button>
-      </div>
-    </div>
-
-    <!-- Pick actions -->
-    <div v-else-if="phase === 'pick-actions'" class="body">
-      <p class="step-label">Select actions</p>
+      <p class="step-label">Configure your agent — tools &amp; actions</p>
       <ul class="checklist">
-        <li v-for="a in catalog?.actions ?? []" :key="a.name">
-          <label class="check">
+        <!-- Actions -->
+        <li v-for="a in catalog?.actions ?? []" :key="`action-${a.name}`">
+          <label class="check" :class="{ pale: isActionPale(a.name) }">
             <input
               type="checkbox"
               :checked="selectedActions.includes(a.name)"
               @change="toggleAction(a.name)"
             />
             <span>
-              <strong>{{ a.name }}</strong>
+              <strong>{{ a.name }} <span class="badge">action</span></strong>
               <em>{{ a.description }} [tools: {{ a.toolNames.join(', ') }}]</em>
             </span>
           </label>
         </li>
-      </ul>
-      <div class="nav">
-        <button type="button" class="btn primary" @click="phase = 'configure'">Done</button>
-      </div>
-    </div>
-
-    <!-- Pick tools -->
-    <div v-else-if="phase === 'pick-tools'" class="body">
-      <p class="step-label">Select tools</p>
-      <ul class="checklist">
-        <li v-for="t in catalog?.tools ?? []" :key="t.name">
-          <label class="check" :class="{ disabled: actionToolNames.has(t.name) }">
+        <!-- Standalone tools -->
+        <li v-for="t in catalog?.tools ?? []" :key="`tool-${t.name}`">
+          <label class="check" :class="{ pale: isToolPale(t.name) }">
             <input
               type="checkbox"
-              :checked="selectedTools.includes(t.name) || actionToolNames.has(t.name)"
-              :disabled="actionToolNames.has(t.name)"
+              :checked="selectedTools.includes(t.name)"
               @change="toggleTool(t.name)"
             />
             <span>
-              <strong>{{ t.name }}</strong>
-              <em>
-                {{
-                  actionToolNames.has(t.name)
-                    ? `${t.description} (included via action)`
-                    : t.description
-                }}
-              </em>
+              <strong>{{ t.name }} <span class="badge tool">tool</span></strong>
+              <em>{{ t.description }}</em>
             </span>
           </label>
         </li>
       </ul>
+      <p class="hint">transfer-eth ↔ send_eth + get_token_balance are mutually exclusive.</p>
+      <pre class="summary">{{ selectionSummary }}</pre>
       <div class="nav">
-        <button type="button" class="btn primary" @click="phase = 'configure'">Done</button>
+        <button type="button" class="btn ghost" @click="phase = 'name'">Back</button>
+        <button type="button" class="btn primary" @click="phase = 'fund'">Continue</button>
       </div>
     </div>
 
@@ -536,6 +538,11 @@ function openChat() {
   cursor: not-allowed;
 }
 
+.check.pale {
+  opacity: 0.55;
+  /* pale like disabled, but still interactive */
+}
+
 .check.skip {
   border: none;
   background: transparent;
@@ -558,6 +565,24 @@ function openChat() {
 .check input {
   margin-top: 0.2rem;
   accent-color: var(--accent);
+}
+
+.badge {
+  display: inline-block;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+  background: color-mix(in oklab, var(--accent) 18%, transparent);
+  color: var(--accent);
+  vertical-align: middle;
+}
+
+.badge.tool {
+  background: color-mix(in oklab, var(--muted) 14%, transparent);
+  color: var(--muted);
 }
 
 .nav {
