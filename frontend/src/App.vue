@@ -7,7 +7,7 @@ import AgentWallet from './components/AgentWallet.vue'
 import AgentMemory from './components/AgentMemory.vue'
 import AgentChat from './components/AgentChat.vue'
 import CreateAgent from './components/CreateAgent.vue'
-import type { AgentSummary } from './api'
+import type { AgentSummary, MemorySession } from './api'
 
 function networkSlug(chainId: number): string {
   if (chainId === 42161) return 'arbitrum-one'
@@ -19,6 +19,7 @@ const selectedAgent = ref<AgentSummary | null>(null)
 const refreshKey = ref(0)
 const showCreate = ref(false)
 const pendingSelect = ref<string | null>(null)
+const recalledSession = ref<MemorySession | null>(null)
 const queryClient = useQueryClient()
 
 function extractNumericId(agentId: string): string {
@@ -40,6 +41,7 @@ const scanUrl = computed(() => {
 
 function onSelect(agent: AgentSummary | null) {
   selectedAgent.value = agent
+  recalledSession.value = null
   if (agent && agent.name === pendingSelect.value) {
     pendingSelect.value = null
   }
@@ -52,6 +54,14 @@ function onFunded() {
 
 function onMemoryChat() {
   refreshKey.value += 1
+}
+
+function onRecall(session: MemorySession) {
+  recalledSession.value = session
+}
+
+function onClearRecall() {
+  recalledSession.value = null
 }
 
 function onCreated(agent: AgentSummary) {
@@ -86,7 +96,7 @@ function onCreated(agent: AgentSummary) {
           @funded="onFunded"
         />
 
-        <AgentMemory :agent="selectedAgent" :refresh-key="refreshKey" />
+        <AgentMemory :agent="selectedAgent" :refresh-key="refreshKey" @recall="onRecall" />
       </aside>
 
       <div class="main">
@@ -95,7 +105,13 @@ function onCreated(agent: AgentSummary) {
           @created="onCreated"
           @cancel="showCreate = false"
         />
-        <AgentChat v-else :agent="selectedAgent" @chat="onMemoryChat" />
+        <AgentChat
+          v-else
+          :agent="selectedAgent"
+          :recalled-session="recalledSession"
+          @chat="onMemoryChat"
+          @clear-recall="onClearRecall"
+        />
       </div>
     </main>
   </div>

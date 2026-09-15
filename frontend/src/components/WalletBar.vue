@@ -82,7 +82,7 @@ async function onSwitchClick() {
 <template>
   <header class="bar">
     <div class="brand">
-      <span class="mark" aria-hidden="true" />
+      <img class="mark" src="/favicon.svg" alt="web3Agent logo" width="32" height="32" />
       <div>
         <p class="name">web3Agent</p>
         <p class="tag">Arbitrum · ERC-8004</p>
@@ -142,9 +142,9 @@ async function onSwitchClick() {
   width: 2rem;
   height: 2rem;
   border-radius: 0.4rem;
-  background:
-    linear-gradient(135deg, var(--accent) 0%, #0b5cab 100%);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, white 20%, transparent);
+  object-fit: contain;
+  display: block;
+  flex-shrink: 0;
 }
 
 .name {

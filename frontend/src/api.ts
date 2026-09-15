@@ -163,6 +163,24 @@ export type MemoryMessage = {
   name?: string
   toolCalls?: { name: string; args: unknown }[]
   id?: string
+  ts?: string
+}
+
+export type MemorySession = {
+  id: string
+  index: number
+  startedAt: string
+  endedAt: string
+  messageCount: number
+  humanCount: number
+  assistantCount: number
+  toolCount: number
+  title: string
+  preview: string
+  messages: MemoryMessage[]
+  txHashes: string[]
+  recipients: string[]
+  summary: string
 }
 
 export type MemorySummary = {
@@ -186,6 +204,7 @@ export type MemorySummary = {
   summary: string
   preview: MemoryMessage[]
   recentTxHashes: string[]
+  sessions: MemorySession[]
 }
 
 export function fetchMemory(agentName: string) {

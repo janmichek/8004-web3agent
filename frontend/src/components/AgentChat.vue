@@ -2,7 +2,7 @@
 import { nextTick, ref, watch } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { chatWithAgent, extractSuccessfulTxHash, type AgentSummary, type ChatEvent } from '../api'
+import { chatWithAgent, extractSuccessfulTxHash, type AgentSummary, type ChatEvent, type MemorySession } from '../api'
 import RateAgent from './RateAgent.vue'
 
 marked.setOptions({ breaks: true, gfm: true })
@@ -24,9 +24,13 @@ const props = defineProps<{
   agent?: AgentSummary | null
   /** @deprecated use `agent` */
   agentName?: string | null
+  recalledSession?: MemorySession | null
 }>()
 
-const emit = defineEmits<{ chat: [] }>()
+const emit = defineEmits<{
+  chat: []
+  clearRecall: []
+}>()
 
 const resolvedName = (): string | null => {
   if (props.agent?.name) return props.agent.name
@@ -45,6 +49,44 @@ watch(
     bubbles.value = []
   },
 )
+
+watch(
+  () => props.recalledSession,
+  (session) => {
+    if (!session) return
+    void recallSession(session)
+  },
+)
+
+async function recallSession(session: MemorySession) {
+  bubbles.value = []
+  for (const m of session.messages) {
+    if (m.role === 'user') {
+      bubbles.value.push({ kind: 'user', text: m.content })
+    } else if (m.role === 'assistant') {
+      if (m.toolCalls?.length) {
+        for (const tc of m.toolCalls) {
+          bubbles.value.push({ kind: 'event', event: { type: 'tool_call', name: tc.name, args: tc.args } })
+        }
+      }
+      if (m.content && m.content.trim()) {
+        bubbles.value.push({ kind: 'agent', text: m.content })
+      } else if (!m.toolCalls?.length) {
+        // empty assistant message without tool calls -> skip
+      }
+    } else if (m.role === 'tool') {
+      bubbles.value.push({ kind: 'event', event: { type: 'tool_result', content: m.content } })
+    } else if (m.role === 'system' && m.content.trim()) {
+      bubbles.value.push({ kind: 'agent', text: m.content })
+    }
+  }
+  await scrollBottom()
+}
+
+function clearRecalled() {
+  bubbles.value = []
+  emit('clearRecall')
+}
 
 async function send() {
   const text = input.value.trim()
@@ -106,6 +148,14 @@ function onKey(e: KeyboardEvent) {
 
 <template>
   <section class="chat">
+    <div v-if="recalledSession" class="recall-bar">
+      <div class="recall-info">
+        <span class="recall-title">↺ {{ recalledSession.title }}</span>
+        <span class="recall-meta mono">{{ recalledSession.messageCount }} msgs · {{ recalledSession.summary }} · {{ new Date(recalledSession.startedAt).toLocaleString() }}</span>
+      </div>
+      <button type="button" class="btn ghost small" @click="clearRecalled">New chat</button>
+    </div>
+
     <div ref="scroller" class="thread" role="log" aria-live="polite" data-testid="chat-thread">
       <p v-if="!resolvedName()" class="empty">
         Select an agent on the left to start — or create a new one.
@@ -172,6 +222,38 @@ function onKey(e: KeyboardEvent) {
   border-radius: var(--radius);
   background: var(--surface);
   overflow: hidden;
+}
+
+.recall-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  background: color-mix(in oklab, var(--accent) 10%, var(--surface));
+  border-bottom: 1px solid color-mix(in oklab, var(--accent) 22%, var(--border));
+  flex-shrink: 0;
+}
+.recall-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.recall-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.recall-meta {
+  font-size: 0.68rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .thread {
