@@ -28,7 +28,17 @@ import {
   buildCapabilitySummary,
 } from "../core/agent-config.js";
 import { ethers } from "ethers";
-import { getNetworkNameByChainId, getNetworkConfig, getRpcUrl } from "../core/config.js";
+import {
+  getChainId,
+  getNetworkNameByChainId,
+  getNetworkConfig,
+  getRpcUrl,
+  getActiveNetwork,
+  getProvider,
+} from "../core/config.js";
+import { ACTION_REGISTRY, TOOL_REGISTRY, getActionByName } from "../core/action-registry.js";
+import { saveAgentConfig, type AgentConfig } from "../core/agent-config.js";
+import { registerAgent } from "../core/registry.js";
 import type { Skill } from "../actions/types.js";
 
 dotenv.config();
@@ -290,9 +300,210 @@ app.post("/api/rpc", async (c) => {
   }
 });
 
+app.get("/api/catalog", async (c) => {
+  let master: { address?: string; balanceEth?: string } = {};
+  try {
+    const wallet = getMasterWallet();
+    master = {
+      address: wallet.address,
+      balanceEth: await getMasterWalletBalance(),
+    };
+  } catch {
+    /* master key may be missing */
+  }
+
+  return c.json({
+    network: getActiveNetwork(),
+    networkName: getNetworkConfig().name,
+    chainId: getNetworkConfig().chainId,
+    master,
+    actions: ACTION_REGISTRY.map((a) => ({
+      name: a.name,
+      description: a.description,
+      toolNames: a.toolNames,
+      skillName: a.skillName,
+    })),
+    tools: TOOL_REGISTRY.map((t) => ({
+      name: t.name,
+      description: t.description,
+    })),
+  });
+});
+
 app.get("/api/agents", (c) => {
   const agents = listExistingAgents().map(publicAgentSummary);
   return c.json({ agents });
+});
+
+app.post("/api/agents", async (c) => {
+  let body: {
+    name?: string;
+    actions?: string[];
+    tools?: string[];
+    fundEth?: string;
+    skipRegister?: boolean;
+  };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const name = body.name?.trim();
+  if (!name) {
+    return c.json({ error: "name is required" }, 400);
+  }
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/.test(name)) {
+    return c.json({
+      error: "name must be 1–63 chars: letters, numbers, . _ - (start with alphanumeric)",
+    }, 400);
+  }
+  if (listExistingAgents().includes(name)) {
+    return c.json({ error: `Agent "${name}" already exists` }, 409);
+  }
+
+  const selectedActions = Array.isArray(body.actions) ? body.actions : [];
+  const selectedTools = Array.isArray(body.tools) ? body.tools : [];
+
+  for (const actionName of selectedActions) {
+    if (!getActionByName(actionName)) {
+      return c.json({ error: `Unknown action: ${actionName}` }, 400);
+    }
+  }
+
+  const actionToolNames = new Set<string>();
+  for (const actionName of selectedActions) {
+    const entry = getActionByName(actionName);
+    if (entry) {
+      for (const t of entry.toolNames) actionToolNames.add(t);
+    }
+  }
+
+  const knownTools = new Set(TOOL_REGISTRY.map((t) => t.name));
+  for (const toolName of selectedTools) {
+    if (!knownTools.has(toolName)) {
+      return c.json({ error: `Unknown tool: ${toolName}` }, 400);
+    }
+  }
+
+  const standaloneTools = selectedTools.filter((t) => !actionToolNames.has(t));
+  const allToolNames = [...new Set([...actionToolNames, ...standaloneTools])];
+
+  const fundEth = (body.fundEth?.trim() || "0.002");
+  const fundAmount = Number(fundEth);
+  if (!Number.isFinite(fundAmount) || fundAmount < 0 || fundAmount > 1) {
+    return c.json({ error: "fundEth must be a number between 0 and 1" }, 400);
+  }
+
+  const skipRegister = Boolean(body.skipRegister);
+  const steps: { step: string; ok: boolean; detail?: string }[] = [];
+
+  let masterWallet: ReturnType<typeof getMasterWallet>;
+  try {
+    masterWallet = getMasterWallet();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return c.json({ error: `Master wallet unavailable: ${msg}` }, 500);
+  }
+
+  // --- Create wallet ---
+  let agentWallet: ReturnType<typeof getOrCreateAgentWallet>;
+  try {
+    agentWallet = getOrCreateAgentWallet({ agentName: name });
+    steps.push({ step: "wallet", ok: true, detail: agentWallet.address });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return c.json({ error: `Wallet creation failed: ${msg}`, steps }, 500);
+  }
+
+  // --- Fund ---
+  let fundTxHash: string | undefined;
+  if (fundAmount > 0) {
+    try {
+      fundTxHash = await fundAgentWallet({
+        agentAddress: agentWallet.address,
+        amountEth: fundEth,
+      });
+      const provider = getProvider();
+      const receipt = await provider.waitForTransaction(fundTxHash);
+      steps.push({
+        step: "fund",
+        ok: true,
+        detail: `tx ${fundTxHash} (block ${receipt?.blockNumber ?? "?"})`,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      steps.push({ step: "fund", ok: false, detail: msg });
+    }
+  } else {
+    steps.push({ step: "fund", ok: true, detail: "skipped (0 ETH)" });
+  }
+
+  // --- Persist config ---
+  const config: AgentConfig = {
+    name,
+    description: `Agent ${name}`,
+    walletAddress: agentWallet.address,
+    walletChainId: getChainId(),
+    endpoints: [],
+    trustModels: [],
+    owners: [masterWallet.address],
+    operators: [agentWallet.address],
+    active: true,
+    x402support: false,
+    metadata: {
+      actions: selectedActions,
+      tools: allToolNames,
+    },
+    createdAt: new Date().toISOString(),
+    updatedAt: Math.floor(Date.now() / 1000),
+  };
+
+  try {
+    saveAgentConfig(name, config);
+    steps.push({ step: "config", ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return c.json({ error: `Failed to save config: ${msg}`, steps }, 500);
+  }
+
+  // --- Register ---
+  if (!skipRegister) {
+    try {
+      const reg = await registerAgent({
+        name: config.name,
+        description: config.description,
+        privateKey: agentWallet.privateKey,
+        walletAddress: agentWallet.address,
+      });
+      config.agentId = reg.agentId;
+      config.agentURI = `https://8004scan.com/api/agent/${agentWallet.address}`;
+      config.updatedAt = Math.floor(Date.now() / 1000);
+      saveAgentConfig(name, config);
+      steps.push({ step: "register", ok: true, detail: String(reg.agentId) });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      steps.push({ step: "register", ok: false, detail: msg });
+    }
+  } else {
+    steps.push({ step: "register", ok: true, detail: "skipped" });
+  }
+
+  let balanceEth = "0";
+  try {
+    const bal = await getProvider().getBalance(agentWallet.address);
+    balanceEth = ethers.formatEther(bal);
+  } catch {
+    /* ignore */
+  }
+
+  return c.json({
+    ok: true,
+    agent: publicAgentSummary(name),
+    balanceEth,
+    fundTxHash,
+    steps,
+  }, 201);
 });
 
 app.get("/api/agents/:name", (c) => {

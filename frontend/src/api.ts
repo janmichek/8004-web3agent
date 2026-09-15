@@ -20,6 +20,49 @@ export type ChatResponse = {
   events: ChatEvent[]
 }
 
+export type CatalogAction = {
+  name: string
+  description: string
+  toolNames: string[]
+  skillName: string
+}
+
+export type CatalogTool = {
+  name: string
+  description: string
+}
+
+export type CatalogResponse = {
+  network: string
+  networkName: string
+  chainId: number
+  master: { address?: string; balanceEth?: string }
+  actions: CatalogAction[]
+  tools: CatalogTool[]
+}
+
+export type CreateAgentRequest = {
+  name: string
+  actions?: string[]
+  tools?: string[]
+  fundEth?: string
+  skipRegister?: boolean
+}
+
+export type CreateAgentStep = {
+  step: string
+  ok: boolean
+  detail?: string
+}
+
+export type CreateAgentResponse = {
+  ok: boolean
+  agent: AgentSummary
+  balanceEth: string
+  fundTxHash?: string
+  steps: CreateAgentStep[]
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
@@ -41,6 +84,17 @@ export function fetchAgents() {
 
 export function fetchHealth() {
   return request<{ ok: boolean; network: string; chainId: number }>('/api/health')
+}
+
+export function fetchCatalog() {
+  return request<CatalogResponse>('/api/catalog')
+}
+
+export function createAgent(body: CreateAgentRequest) {
+  return request<CreateAgentResponse>('/api/agents', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
 }
 
 export function chatWithAgent(name: string, message: string) {

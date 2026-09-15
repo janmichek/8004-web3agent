@@ -18,6 +18,10 @@ type Bubble =
   | { kind: 'event'; event: ChatEvent }
   | { kind: 'error'; text: string }
 
+const props = defineProps<{
+  selectName?: string | null
+}>()
+
 const agents = ref<AgentSummary[]>([])
 const selected = ref('')
 const input = ref('')
@@ -28,6 +32,7 @@ const scroller = ref<HTMLElement | null>(null)
 
 const emit = defineEmits<{
   select: [agent: AgentSummary | null]
+  create: []
 }>()
 
 async function loadAgents() {
@@ -35,8 +40,12 @@ async function loadAgents() {
   try {
     const data = await fetchAgents()
     agents.value = data.agents
-    if (!selected.value && data.agents[0]) {
+    if (props.selectName && data.agents.some((a) => a.name === props.selectName)) {
+      selected.value = props.selectName
+    } else if (!selected.value && data.agents[0]) {
       selected.value = data.agents[0].name
+    } else if (selected.value && !data.agents.some((a) => a.name === selected.value)) {
+      selected.value = data.agents[0]?.name ?? ''
     }
   } catch (err) {
     loadError.value =
@@ -51,6 +60,17 @@ watch(selected, (name) => {
   emit('select', agent)
   bubbles.value = []
 })
+
+watch(
+  () => props.selectName,
+  (name) => {
+    if (name && agents.value.some((a) => a.name === name)) {
+      selected.value = name
+    } else if (name) {
+      void loadAgents()
+    }
+  },
+)
 
 async function send() {
   const text = input.value.trim()
@@ -116,13 +136,22 @@ onMounted(() => {
           </option>
         </select>
       </div>
-      <button type="button" class="btn ghost small" @click="loadAgents">Reload</button>
+      <div class="head-actions">
+        <button type="button" class="btn ghost small" @click="loadAgents">Reload</button>
+        <button type="button" class="btn primary small" @click="emit('create')">
+          Create agent
+        </button>
+      </div>
     </header>
 
     <p v-if="loadError" class="banner">{{ loadError }}</p>
 
     <div ref="scroller" class="thread" role="log" aria-live="polite">
-      <p v-if="!bubbles.length" class="empty">
+      <p v-if="!bubbles.length && !agents.length" class="empty">
+        No agents yet — create one to get started (same flow as
+        <code>npm run create-agent</code>).
+      </p>
+      <p v-else-if="!bubbles.length" class="empty">
         Ask about balances — e.g. “What’s my ETH balance?”
       </p>
 
@@ -177,6 +206,13 @@ onMounted(() => {
   gap: 0.75rem;
   padding: 0.9rem 1rem;
   border-bottom: 1px solid var(--border);
+}
+
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
 }
 
 .pick {

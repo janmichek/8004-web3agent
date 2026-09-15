@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/vue-query'
 import WalletBar from './components/WalletBar.vue'
 import AgentWallet from './components/AgentWallet.vue'
 import AgentChat from './components/AgentChat.vue'
+import CreateAgent from './components/CreateAgent.vue'
 import type { AgentSummary } from './api'
 
 function networkSlug(chainId: number): string {
@@ -14,6 +15,8 @@ function networkSlug(chainId: number): string {
 
 const selectedAgent = ref<AgentSummary | null>(null)
 const refreshKey = ref(0)
+const showCreate = ref(false)
+const pendingSelect = ref<string | null>(null)
 const queryClient = useQueryClient()
 
 function extractNumericId(agentId: string): string {
@@ -35,9 +38,20 @@ const scanUrl = computed(() => {
 
 function onSelect(agent: AgentSummary | null) {
   selectedAgent.value = agent
+  if (agent && agent.name === pendingSelect.value) {
+    pendingSelect.value = null
+  }
 }
 
 function onFunded() {
+  refreshKey.value += 1
+  void queryClient.invalidateQueries()
+}
+
+function onCreated(agent: AgentSummary) {
+  showCreate.value = false
+  selectedAgent.value = agent
+  pendingSelect.value = agent.name
   refreshKey.value += 1
   void queryClient.invalidateQueries()
 }
@@ -83,7 +97,17 @@ function onFunded() {
       </aside>
 
       <div class="main">
-        <AgentChat @select="onSelect" />
+        <CreateAgent
+          v-if="showCreate"
+          @created="onCreated"
+          @cancel="showCreate = false"
+        />
+        <AgentChat
+          v-else
+          :select-name="pendingSelect"
+          @select="onSelect"
+          @create="showCreate = true"
+        />
       </div>
     </main>
   </div>
