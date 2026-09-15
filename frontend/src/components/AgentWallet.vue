@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, unref, watch } from 'vue'
-import { useBalance } from '@wagmi/vue'
-import { formatEther, isAddress, type Address } from 'viem'
-import { fundAgent } from '../api'
+import { computed, onMounted, ref } from 'vue'
+import { isAddress, type Address } from 'viem'
+import { fetchHealth, fundAgent } from '../api'
 
 const props = defineProps<{ agentAddress?: string; agentName?: string; refreshKey?: number }>()
 const emit = defineEmits<{ funded: [txHash: string] }>()
@@ -11,23 +10,27 @@ const amount = ref('0.001')
 const statusText = ref('')
 const statusKind = ref<'info' | 'ok' | 'error'>('info')
 const busy = ref(false)
+const masterAddress = ref('')
+const masterChainId = ref(421614)
+
+const masterScanUrl = computed(() => {
+  if (!masterAddress.value) return null
+  const base = masterChainId.value === 42161 ? 'https://arbiscan.io' : 'https://sepolia.arbiscan.io'
+  return `${base}/address/${masterAddress.value}`
+})
+
+onMounted(() => {
+  void fetchHealth()
+    .then((h) => {
+      if (h.master?.address) masterAddress.value = h.master.address
+      if (h.chainId) masterChainId.value = h.chainId
+    })
+    .catch(() => {})
+})
 
 const addr = computed<Address | undefined>(() =>
   props.agentAddress && isAddress(props.agentAddress) ? (props.agentAddress as Address) : undefined,
 )
-const hasTarget = computed(() => Boolean(addr.value))
-const eth = useBalance({ address: addr, query: { enabled: hasTarget } })
-
-const ethDisplay = computed(() => {
-  if (!addr.value) return '—'
-  if (unref(eth.isFetching) && unref(eth.data) === undefined) return '…'
-  if (unref(eth.error)) return 'Error'
-  const d = unref(eth.data)
-  if (d?.value === undefined) return '—'
-  return `${Number(formatEther(d.value)).toPrecision(6)} ETH`
-})
-
-watch(() => props.refreshKey, () => { if (hasTarget.value) void eth.refetch() })
 
 const canSend = computed(() => {
   if (!props.agentName || !addr.value || busy.value) return false
@@ -52,7 +55,6 @@ async function fund() {
     const r = await fundAgent(props.agentName, amount.value)
     statusText.value = `Sent ${r.txHash.slice(0, 10)}…`
     statusKind.value = 'ok'
-    void eth.refetch()
     emit('funded', r.txHash)
   } catch (err) {
     statusText.value = friendlyError(err)
@@ -64,18 +66,25 @@ async function fund() {
 <template>
   <section class="panel">
     <header class="head">
-      <h2>Agent wallet</h2>
-      <button type="button" class="btn ghost small" :disabled="!addr" @click="eth.refetch()">Refresh</button>
+      <h2>Fund agent</h2>
     </header>
+
+    <div v-if="masterAddress" class="master">
+      <dt>Master wallet</dt>
+      <dd class="mono">
+        <a
+          v-if="masterScanUrl"
+          :href="masterScanUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          >{{ masterAddress }} ↗</a
+        >
+        <span v-else>{{ masterAddress }}</span>
+      </dd>
+    </div>
 
     <p v-if="!addr" class="hint">Select an agent with a wallet address.</p>
     <template v-else>
-      <div class="bal">
-        <span class="sym">ETH</span>
-        <span class="amt mono">{{ ethDisplay }}</span>
-      </div>
-      <h3 class="fund-heading">Fund agent</h3>
-
       <form class="form" @submit.prevent="fund">
         <label class="field">
           <span>Amount (ETH)</span>
@@ -93,15 +102,14 @@ async function fund() {
 .head { display:flex; justify-content:space-between; align-items:center; }
 .head h2 { margin:0; font-size:0.95rem; font-weight:600; }
 .sub { margin:0; color:var(--muted); font-size:0.75rem; }
-.fund-heading { margin:0; font-size:0.85rem; font-weight:600; }
 .hint { margin:0; font-size:0.85rem; color:var(--muted); }
-.bal { display:flex; justify-content:space-between; align-items:baseline; padding:0.6rem 0.75rem; background:var(--surface-2); border-radius:0.4rem; }
-.sym { font-size:0.8rem; font-weight:600; color:var(--muted); }
-.amt { font-size:0.95rem; }
 .form { display:flex; flex-direction:column; gap:0.6rem; }
 .field { display:flex; flex-direction:column; gap:0.3rem; font-size:0.75rem; color:var(--muted); }
 .field input { font:inherit; font-family:var(--font-mono); font-size:0.9rem; padding:0.6rem 0.75rem; border-radius:0.4rem; border:1px solid var(--border); background:var(--bg); color:var(--ink); }
 .status { margin:0; font-size:0.78rem; word-break:break-all; }
 .status.info{color:var(--muted)} .status.ok{color:#6ecf8e} .status.error{color:#ffb4b0}
-.btn.small{padding:0.3rem 0.6rem; font-size:0.72rem}
+.master dt { font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); }
+.master dd { margin:0.15rem 0 0; font-size:0.85rem; word-break:break-all; }
+.master dd a { color:var(--accent); text-decoration:none; }
+.master dd a:hover { text-decoration:underline; }
 </style>

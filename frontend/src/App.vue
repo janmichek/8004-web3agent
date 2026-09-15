@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { useQueryClient } from '@tanstack/vue-query'
 import WalletBar from './components/WalletBar.vue'
+import AgentPicker from './components/AgentPicker.vue'
 import AgentWallet from './components/AgentWallet.vue'
 import AgentChat from './components/AgentChat.vue'
 import CreateAgent from './components/CreateAgent.vue'
@@ -63,37 +64,22 @@ function onCreated(agent: AgentSummary) {
 
     <main class="layout">
       <aside class="side">
+        <AgentPicker
+          :select-name="pendingSelect"
+          :agent="selectedAgent"
+          :scan-id="scanId"
+          :scan-url="scanUrl"
+          :refresh-key="refreshKey"
+          @select="onSelect"
+          @create="showCreate = true"
+        />
+
         <AgentWallet
           :agent-address="selectedAgent?.walletAddress"
           :agent-name="selectedAgent?.name"
           :refresh-key="refreshKey"
           @funded="onFunded"
         />
-
-        <section v-if="selectedAgent" class="meta">
-          <h2>{{ selectedAgent.name }}</h2>
-          <dl>
-            <div v-if="selectedAgent.walletAddress">
-              <dt>Wallet</dt>
-              <dd class="mono">{{ selectedAgent.walletAddress }}</dd>
-            </div>
-            <div v-if="selectedAgent.agentId">
-              <dt>ERC-8004</dt>
-              <dd class="mono">
-                <a v-if="scanUrl && scanId" :href="scanUrl" target="_blank" rel="noopener noreferrer">#{{ scanId }} ↗</a>
-                <span v-else>#{{ selectedAgent.agentId }}</span>
-              </dd>
-            </div>
-            <div>
-              <dt>Tools</dt>
-              <dd>{{ selectedAgent.tools.join(', ') || 'none' }}</dd>
-            </div>
-            <div>
-              <dt>Actions</dt>
-              <dd>{{ selectedAgent.actions.join(', ') || 'none' }}</dd>
-            </div>
-          </dl>
-        </section>
       </aside>
 
       <div class="main">
@@ -102,12 +88,7 @@ function onCreated(agent: AgentSummary) {
           @created="onCreated"
           @cancel="showCreate = false"
         />
-        <AgentChat
-          v-else
-          :select-name="pendingSelect"
-          @select="onSelect"
-          @create="showCreate = true"
-        />
+        <AgentChat v-else :agent="selectedAgent" />
       </div>
     </main>
   </div>
@@ -149,47 +130,6 @@ function onCreated(agent: AgentSummary) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-.meta {
-  padding: 1rem 1.1rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-}
-
-.meta h2 {
-  margin: 0 0 0.75rem;
-  font-size: 0.95rem;
-}
-
-.meta dl {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
-}
-
-.meta dt {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
-}
-
-.meta dd {
-  margin: 0.15rem 0 0;
-  font-size: 0.85rem;
-  word-break: break-all;
-}
-
-.meta dd a {
-  color: var(--accent);
-  text-decoration: none;
-}
-
-.meta dd a:hover {
-  text-decoration: underline;
 }
 
 @media (max-width: 860px) {

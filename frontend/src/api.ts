@@ -5,9 +5,27 @@ export type AgentSummary = {
   walletChainId: number
   agentId?: string
   agentURI?: string
+  owners?: string[]
+  operators?: string[]
   actions: string[]
   tools: string[]
   active: boolean
+}
+
+export type ReputationSummary = {
+  count: number
+  averageValue: number
+  scanUrl?: string
+}
+
+export type FeedbackResult = {
+  ok: boolean
+  txHash: string
+  agentId: string
+  value: number
+  rater: string
+  reputation: ReputationSummary
+  scanUrl: string
 }
 
 export type ChatEvent =
@@ -83,7 +101,12 @@ export function fetchAgents() {
 }
 
 export function fetchHealth() {
-  return request<{ ok: boolean; network: string; chainId: number }>('/api/health')
+  return request<{
+    ok: boolean
+    network: string
+    chainId: number
+    master?: { address?: string; balanceEth?: string }
+  }>('/api/health')
 }
 
 export function fetchCatalog() {
@@ -115,4 +138,35 @@ export function fundAgent(name: string, amountEth: string) {
     method: 'POST',
     body: JSON.stringify({ amountEth }),
   })
+}
+
+export function submitFeedback(
+  agentName: string,
+  body: { agentId?: string; value: number; tag?: string; comment?: string },
+) {
+  return request<FeedbackResult>(`/api/agents/${encodeURIComponent(agentName)}/feedback`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+export function fetchReputation(agentId: string, tag?: string) {
+  const q = tag ? `?tag=${encodeURIComponent(tag)}` : ''
+  return request<ReputationSummary & { agentId: string }>(
+    `/api/reputation/${encodeURIComponent(agentId)}${q}`,
+  )
+}
+
+/** Detect a mined/success tx hash in agent tool output (not an Error: line). */
+export function extractSuccessfulTxHash(content: string): string | null {
+  if (/^\s*Error:/i.test(content) || /\bError:/i.test(content.split('\n')[0] ?? '')) return null
+  const m = content.match(/\b(0x[a-fA-F0-9]{64})\b/)
+  return m?.[1] ?? null
+}
+
+export function scanUrlForAgent(agentId: string, chainId: number): string {
+  const parts = agentId.split(':')
+  const tokenId = parts[parts.length - 1] || agentId
+  const slug = chainId === 42161 ? 'arbitrum-one' : 'arbitrum-sepolia'
+  return `https://testnet.8004scan.io/agents/${slug}/${tokenId}`
 }

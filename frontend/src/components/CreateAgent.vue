@@ -135,11 +135,6 @@ async function submitCreate() {
 function openChat() {
   if (createdAgent.value) emit('created', createdAgent.value)
 }
-
-function shortAddr(addr?: string) {
-  if (!addr) return '—'
-  return `${addr.slice(0, 8)}…${addr.slice(-4)}`
-}
 </script>
 
 <template>
@@ -162,8 +157,8 @@ function shortAddr(addr?: string) {
           <dd>{{ catalog.networkName }} ({{ catalog.network }})</dd>
         </div>
         <div>
-          <dt>Master</dt>
-          <dd class="mono">{{ shortAddr(catalog.master.address) }}</dd>
+          <dt>Master Wallet</dt>
+          <dd class="mono">{{ catalog.master.address }}</dd>
         </div>
         <div>
           <dt>Balance</dt>
@@ -213,14 +208,11 @@ function shortAddr(addr?: string) {
           <span class="menu-title">Tools</span>
           <span class="menu-hint">Standalone tools, no reasoning layer</span>
         </button>
-        <button type="button" class="menu-item primary" @click="phase = 'fund'">
-          <span class="menu-title">Continue</span>
-          <span class="menu-hint">Proceed with current selection</span>
-        </button>
       </div>
       <pre class="summary">{{ selectionSummary }}</pre>
       <div class="nav">
         <button type="button" class="btn ghost" @click="phase = 'name'">Back</button>
+        <button type="button" class="btn primary" @click="phase = 'fund'">Continue</button>
       </div>
     </div>
 

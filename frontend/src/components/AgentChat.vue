@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { chatWithAgent, fetchAgents, type AgentSummary, type ChatEvent } from '../api'
+import { chatWithAgent, extractSuccessfulTxHash, type AgentSummary, type ChatEvent } from '../api'
+import RateAgent from './RateAgent.vue'
 
 marked.setOptions({ breaks: true, gfm: true })
 
@@ -16,65 +17,36 @@ type Bubble =
   | { kind: 'user'; text: string }
   | { kind: 'agent'; text: string }
   | { kind: 'event'; event: ChatEvent }
+  | { kind: 'rate'; txHash: string }
   | { kind: 'error'; text: string }
 
 const props = defineProps<{
-  selectName?: string | null
+  agent?: AgentSummary | null
+  /** @deprecated use `agent` */
+  agentName?: string | null
 }>()
 
-const agents = ref<AgentSummary[]>([])
-const selected = ref('')
+const resolvedName = (): string | null => {
+  if (props.agent?.name) return props.agent.name
+  if (props.agentName) return props.agentName
+  return null
+}
+
 const input = ref('')
 const busy = ref(false)
-const loadError = ref('')
 const bubbles = ref<Bubble[]>([])
 const scroller = ref<HTMLElement | null>(null)
 
-const emit = defineEmits<{
-  select: [agent: AgentSummary | null]
-  create: []
-}>()
-
-async function loadAgents() {
-  loadError.value = ''
-  try {
-    const data = await fetchAgents()
-    agents.value = data.agents
-    if (props.selectName && data.agents.some((a) => a.name === props.selectName)) {
-      selected.value = props.selectName
-    } else if (!selected.value && data.agents[0]) {
-      selected.value = data.agents[0].name
-    } else if (selected.value && !data.agents.some((a) => a.name === selected.value)) {
-      selected.value = data.agents[0]?.name ?? ''
-    }
-  } catch (err) {
-    loadError.value =
-      err instanceof Error
-        ? err.message
-        : 'API unavailable — run npm run serve'
-  }
-}
-
-watch(selected, (name) => {
-  const agent = agents.value.find((a) => a.name === name) ?? null
-  emit('select', agent)
-  bubbles.value = []
-})
-
 watch(
-  () => props.selectName,
-  (name) => {
-    if (name && agents.value.some((a) => a.name === name)) {
-      selected.value = name
-    } else if (name) {
-      void loadAgents()
-    }
+  () => props.agent?.name ?? props.agentName,
+  () => {
+    bubbles.value = []
   },
 )
 
 async function send() {
   const text = input.value.trim()
-  const name = selected.value
+  const name = resolvedName()
   if (!text || !name || busy.value) return
 
   bubbles.value.push({ kind: 'user', text })
@@ -84,15 +56,23 @@ async function send() {
 
   try {
     const res = await chatWithAgent(name, text)
+    let lastSuccessTx: string | null = null
     for (const event of res.events) {
       if (event.type === 'message') {
         bubbles.value.push({ kind: 'agent', text: event.content })
       } else {
         bubbles.value.push({ kind: 'event', event })
+        if (event.type === 'tool_result') {
+          const tx = extractSuccessfulTxHash(event.content)
+          if (tx) lastSuccessTx = tx
+        }
       }
     }
     if (!res.events.some((e) => e.type === 'message') && res.reply) {
       bubbles.value.push({ kind: 'agent', text: res.reply })
+    }
+    if (lastSuccessTx && props.agent?.agentId) {
+      bubbles.value.push({ kind: 'rate', txHash: lastSuccessTx })
     }
   } catch (err) {
     bubbles.value.push({
@@ -118,38 +98,13 @@ function onKey(e: KeyboardEvent) {
     void send()
   }
 }
-
-onMounted(() => {
-  void loadAgents()
-})
 </script>
 
 <template>
   <section class="chat">
-    <header class="head">
-      <div class="pick">
-        <label for="agent">Agent</label>
-        <select id="agent" v-model="selected" :disabled="!agents.length">
-          <option v-if="!agents.length" value="">No agents</option>
-          <option v-for="a in agents" :key="a.name" :value="a.name">
-            {{ a.name }}
-          </option>
-        </select>
-      </div>
-      <div class="head-actions">
-        <button type="button" class="btn ghost small" @click="loadAgents">Reload</button>
-        <button type="button" class="btn primary small" @click="emit('create')">
-          Create agent
-        </button>
-      </div>
-    </header>
-
-    <p v-if="loadError" class="banner">{{ loadError }}</p>
-
-    <div ref="scroller" class="thread" role="log" aria-live="polite">
-      <p v-if="!bubbles.length && !agents.length" class="empty">
-        No agents yet — create one to get started (same flow as
-        <code>npm run create-agent</code>).
+    <div ref="scroller" class="thread" role="log" aria-live="polite" data-testid="chat-thread">
+      <p v-if="!resolvedName()" class="empty">
+        Select an agent on the left to start — or create a new one.
       </p>
       <p v-else-if="!bubbles.length" class="empty">
         Ask about balances — e.g. “What’s my ETH balance?”
@@ -159,7 +114,17 @@ onMounted(() => {
         <div v-if="b.kind === 'user'" class="bubble user md" v-html="renderMarkdown(b.text)"></div>
         <div v-else-if="b.kind === 'agent'" class="bubble agent md" v-html="renderMarkdown(b.text)"></div>
         <div v-else-if="b.kind === 'error'" class="bubble error">{{ b.text }}</div>
-        <div v-else class="event mono">
+        <div v-else-if="b.kind === 'rate' && agent?.agentId" class="rate-wrap">
+          <RateAgent
+            :agent-name="agent.name"
+            :default-agent-id="agent.agentId"
+            :wallet-chain-id="agent.walletChainId"
+            :owners="agent.owners"
+            :operators="agent.operators"
+            :tx-hash="b.txHash"
+          />
+        </div>
+        <div v-else-if="b.kind === 'event'" class="event mono">
           <template v-if="b.event.type === 'tool_call'">
             → {{ b.event.name }} {{ JSON.stringify(b.event.args) }}
           </template>
@@ -176,11 +141,17 @@ onMounted(() => {
       <textarea
         v-model="input"
         rows="2"
-        placeholder="Message the agent…"
-        :disabled="busy || !selected"
+        :placeholder="resolvedName() ? 'Message the agent…' : 'Select an agent first…'"
+        data-testid="chat-input"
+        :disabled="busy || !resolvedName()"
         @keydown="onKey"
       />
-      <button class="btn primary" type="submit" :disabled="busy || !input.trim() || !selected">
+      <button
+        class="btn primary"
+        type="submit"
+        data-testid="chat-send"
+        :disabled="busy || !input.trim() || !resolvedName()"
+      >
         Send
       </button>
     </form>
@@ -197,55 +168,6 @@ onMounted(() => {
   border-radius: var(--radius);
   background: var(--surface);
   overflow: hidden;
-}
-
-.head {
-  display: flex;
-  justify-content: space-between;
-  align-items: end;
-  gap: 0.75rem;
-  padding: 0.9rem 1rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.head-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  flex-shrink: 0;
-}
-
-.pick {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  flex: 1;
-}
-
-.pick label {
-  font-size: 0.72rem;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.pick select {
-  font: inherit;
-  font-size: 0.9rem;
-  padding: 0.45rem 0.55rem;
-  border-radius: 0.35rem;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--ink);
-}
-
-.banner {
-  margin: 0;
-  padding: 0.65rem 1rem;
-  background: color-mix(in oklab, var(--warn) 12%, var(--surface));
-  color: var(--warn);
-  font-size: 0.82rem;
-  border-bottom: 1px solid var(--border);
 }
 
 .thread {
@@ -320,6 +242,11 @@ onMounted(() => {
   color: var(--muted);
   padding: 0.25rem 0.4rem;
   opacity: 0.9;
+}
+
+.rate-wrap {
+  align-self: stretch;
+  display: flex;
 }
 
 .typing {
