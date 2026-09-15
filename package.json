@@ -20,6 +20,7 @@
     "chat": "npx tsx src/cli/chat.ts",
     "serve": "npx tsx src/server/api.ts",
     "frontend": "npm run dev --prefix frontend",
+    "dev": "concurrently --kill-others --names \"api,frontend\" --prefix-colors \"cyan,magenta\" \"npm run serve\" \"npm run frontend\"",
     "frontend:build": "npm run build --prefix frontend",
     "test": "npx tsx src/cli/test-workflow.ts"
   },
@@ -53,6 +54,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/qrcode-terminal": "^0.12.2",
+    "concurrently": "^10.0.5",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "vitest": "^4.1.0"
