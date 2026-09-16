@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch } from 'vue'
 import { fetchMemory, type MemorySummary, type MemorySession, type AgentSummary } from '../api'
 
 const props = defineProps<{
@@ -9,6 +9,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   recall: [session: MemorySession]
+  newChat: []
 }>()
 
 const memory = ref<MemorySummary | null>(null)
@@ -26,19 +27,6 @@ function timeAgo(iso: string | null): string {
   if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`
   return d.toLocaleDateString()
 }
-
-function shortAddr(a: string): string {
-  return `${a.slice(0, 6)}…${a.slice(-4)}`
-}
-
-function shortTx(h: string): string {
-  return `${h.slice(0, 10)}…${h.slice(-6)}`
-}
-
-const explorerBase = computed(() => {
-  const chainId = props.agent?.walletChainId ?? 421614
-  return chainId === 42161 ? 'https://arbiscan.io' : 'https://sepolia.arbiscan.io'
-})
 
 async function load() {
   const name = props.agent?.name
@@ -67,50 +55,22 @@ async function load() {
 watch(() => props.agent?.name, load, { immediate: true })
 watch(() => props.refreshKey, () => { void load() })
 
-const stats = computed(() => memory.value?.stats ?? null)
-const topTools = computed(() => {
-  if (!stats.value) return []
-  return Object.entries(stats.value.toolCallsByName)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6)
-})
-
 function onRecall(s: MemorySession) {
   selectedId.value = s.id
   emit('recall', s)
 }
 
-function formatSessionRange(s: MemorySession): string {
-  const start = new Date(s.startedAt)
-  const end = new Date(s.endedAt)
-  const sameDay = start.toDateString() === end.toDateString()
-  if (sameDay) {
-    const date = start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-    const t1 = start.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-    const t2 = end.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-    if (t1 === t2) return `${date}, ${t1}`
-    return `${date}, ${t1}–${t2}`
-  }
-  return `${start.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} → ${end.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+function onNewChat() {
+  selectedId.value = null
+  emit('newChat')
 }
 </script>
 
 <template>
   <section class="card memory" data-testid="agent-memory">
-    <header class="card-head">
-      <h2 class="title"><span class="brain">🧠</span> Memory</h2>
-      <div class="head-actions">
-        <button
-          type="button"
-          class="btn ghost small"
-          :disabled="loading || !agent?.name"
-          title="Reload memory from disk"
-          @click="load"
-        >
-          {{ loading ? '…' : 'Refresh' }}
-        </button>
-      </div>
-    </header>
+    <div class="convos-top">
+      <button type="button" class="btn ghost small" :disabled="!agent?.name" @click="onNewChat">+ New chat</button>
+    </div>
 
     <p v-if="!agent?.name" class="hint">Select an agent to see its on-disk memory.</p>
 
@@ -133,83 +93,6 @@ function formatSessionRange(s: MemorySession): string {
         </div>
 
         <template v-else>
-          <!-- Summary line (generated server-side) -->
-          <p class="summary">{{ memory.summary }}</p>
-
-          <!-- Stat grid -->
-          <div class="grid">
-            <div class="stat">
-              <span class="k">Messages</span>
-              <span class="v">{{ stats?.totalMessages }}</span>
-              <span class="sub mono">{{ stats?.humanCount }} you · {{ stats?.aiCount }} agent · {{ stats?.toolCount }} tool</span>
-            </div>
-            <div class="stat">
-              <span class="k">Checkpoints</span>
-              <span class="v">{{ memory.checkpointCount }}</span>
-              <span class="sub mono">{{ memory.threads.join(', ') }} · {{ memory.sessions.length }} session{{ memory.sessions.length !== 1 ? 's' : '' }}</span>
-            </div>
-            <div class="stat">
-              <span class="k">Last active</span>
-              <span class="v mono small">{{ timeAgo(memory.lastActive) }}</span>
-              <span v-if="memory.lastActive" class="sub mono" :title="memory.lastActive">{{ new Date(memory.lastActive).toLocaleString() }}</span>
-            </div>
-            <div class="stat">
-              <span class="k">ETH moved</span>
-              <span class="v mono">{{ stats && Number(stats.totalEthSent) > 0 ? (Number(stats.totalEthSent).toFixed(8).replace(/0+$/, '').replace(/\.$/, '') + ' ETH') : '—' }}</span>
-              <span class="sub mono">{{ stats?.txHashes.length ?? 0 }} tx · {{ stats?.uniqueRecipients.length ?? 0 }} recipient{{ (stats?.uniqueRecipients.length ?? 0) === 1 ? '' : 's' }}</span>
-            </div>
-          </div>
-
-          <!-- Tool chips -->
-          <div v-if="topTools.length" class="chips">
-            <span v-for="[name, n] in topTools" :key="name" class="chip mono" :title="`${name} called ${n} times`">
-              <span class="chip-name">{{ name }}</span>
-              <span class="chip-count">×{{ n }}</span>
-            </span>
-          </div>
-
-          <!-- Recipients & Txs -->
-          <div class="lists">
-            <div v-if="stats?.uniqueRecipients.length" class="list-block">
-              <span class="list-label">Recipients</span>
-              <div class="addr-list">
-                <a
-                  v-for="a in stats.uniqueRecipients.slice(0, 6)"
-                  :key="a"
-                  class="mono addr"
-                  :href="`${explorerBase}/address/${a}`"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  :title="a"
-                  >{{ shortAddr(a) }} ↗</a
-                >
-                <span v-if="(stats.uniqueRecipients.length ?? 0) > 6" class="mono more">+{{ (stats.uniqueRecipients.length ?? 0) - 6 }} more</span>
-              </div>
-            </div>
-
-            <div v-if="memory.recentTxHashes.length" class="list-block">
-              <span class="list-label">Recent txs</span>
-              <div class="addr-list">
-                <a
-                  v-for="h in memory.recentTxHashes.slice(0, 5)"
-                  :key="h"
-                  class="mono addr"
-                  :href="`${explorerBase}/tx/${h}`"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  :title="h"
-                  >{{ shortTx(h) }} ↗</a
-                >
-              </div>
-            </div>
-          </div>
-
-          <!-- Sessions (interactive) -->
-          <div class="sessions-head">
-            <span class="list-label">Sessions</span>
-            <span class="mono small muted">{{ memory.sessions.length }} session{{ memory.sessions.length !== 1 ? 's' : '' }} · click to recall</span>
-          </div>
-
           <div v-if="!memory.sessions.length" class="hint">No sessions detected.</div>
 
           <div v-else class="session-list" role="list">
@@ -221,29 +104,15 @@ function formatSessionRange(s: MemorySession): string {
               class="session-card"
               :class="{ selected: selectedId === s.id }"
               :aria-selected="selectedId === s.id ? 'true' : 'false'"
-              :title="`Recall ${s.title} to chat`"
+              :title="`Recall conversation from ${timeAgo(s.startedAt)}`"
               @click="onRecall(s)"
             >
-              <div class="session-head">
-                <span class="session-index mono">#{{ s.index + 1 }}</span>
-                <span class="session-time mono">{{ timeAgo(s.startedAt) }}</span>
-              </div>
-              <div class="session-title">{{ s.title }}</div>
-              <div class="session-range mono">{{ formatSessionRange(s) }}</div>
               <div class="session-preview" :title="s.preview">“{{ s.preview }}”</div>
-              <div class="session-meta mono">
-                <span>{{ s.summary }}</span>
-                <span v-if="s.humanCount"> · {{ s.humanCount }} prompt{{ s.humanCount !== 1 ? 's' : '' }}</span>
-              </div>
-              <div class="session-actions">
-                <span class="recall-hint">↺ Recall to chat</span>
-                <span v-if="selectedId === s.id" class="recall-active">✓ recalled</span>
+              <div class="session-head">
+                <span class="session-time mono">{{ timeAgo(s.startedAt) }}</span>
               </div>
             </button>
           </div>
-
-          <!-- Disk location footer -->
-          <p class="foot mono">on disk: <code>agents/{{ agent.name }}/memory.json</code> · {{ memory.checkpointCount }} checkpoints · {{ memory.sessions.length }} sessions (20 min idle gap)</p>
         </template>
       </template>
     </template>
@@ -414,6 +283,8 @@ function formatSessionRange(s: MemorySession): string {
   align-items: baseline;
   margin-top: 0.2rem;
 }
+.convos-top { display: flex; }
+.convos-top .btn { flex: 1; justify-content: center; }
 .small { font-size: 0.7rem; }
 .muted { color: var(--muted); }
 

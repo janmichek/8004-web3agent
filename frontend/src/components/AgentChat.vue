@@ -29,7 +29,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   chat: []
-  clearRecall: []
 }>()
 
 const resolvedName = (): string | null => {
@@ -53,7 +52,10 @@ watch(
 watch(
   () => props.recalledSession,
   (session) => {
-    if (!session) return
+    if (!session) {
+      bubbles.value = []
+      return
+    }
     void recallSession(session)
   },
 )
@@ -81,11 +83,6 @@ async function recallSession(session: MemorySession) {
     }
   }
   await scrollBottom()
-}
-
-function clearRecalled() {
-  bubbles.value = []
-  emit('clearRecall')
 }
 
 async function send() {
@@ -148,26 +145,18 @@ function onKey(e: KeyboardEvent) {
 
 <template>
   <section class="chat">
-    <div v-if="recalledSession" class="recall-bar">
-      <div class="recall-info">
-        <span class="recall-title">↺ {{ recalledSession.title }}</span>
-        <span class="recall-meta mono">{{ recalledSession.messageCount }} msgs · {{ recalledSession.summary }} · {{ new Date(recalledSession.startedAt).toLocaleString() }}</span>
-      </div>
-      <button type="button" class="btn ghost small" @click="clearRecalled">New chat</button>
-    </div>
-
     <div ref="scroller" class="thread" role="log" aria-live="polite" data-testid="chat-thread">
-      <p v-if="!resolvedName()" class="empty">
+      <p v-if="!resolvedName()" class="empty" data-testid="chat-empty-no-agent">
         Select an agent on the left to start — or create a new one.
       </p>
-      <p v-else-if="!bubbles.length" class="empty">
+      <p v-else-if="!bubbles.length" class="empty" data-testid="chat-empty">
         Ask about balances — e.g. “What’s my ETH balance?”
       </p>
 
       <template v-for="(b, i) in bubbles" :key="i">
-        <div v-if="b.kind === 'user'" class="bubble user md" v-html="renderMarkdown(b.text)"></div>
-        <div v-else-if="b.kind === 'agent'" class="bubble agent md" v-html="renderMarkdown(b.text)"></div>
-        <div v-else-if="b.kind === 'error'" class="bubble error">{{ b.text }}</div>
+        <div v-if="b.kind === 'user'" class="bubble user md" data-testid="chat-bubble-user" v-html="renderMarkdown(b.text)"></div>
+        <div v-else-if="b.kind === 'agent'" class="bubble agent md" data-testid="chat-bubble-agent" v-html="renderMarkdown(b.text)"></div>
+        <div v-else-if="b.kind === 'error'" class="bubble error" data-testid="chat-bubble-error">{{ b.text }}</div>
         <div v-else-if="b.kind === 'rate' && agent?.agentId" class="rate-wrap">
           <RateAgent
             :agent-name="agent.name"
@@ -178,7 +167,7 @@ function onKey(e: KeyboardEvent) {
             :tx-hash="b.txHash"
           />
         </div>
-        <div v-else-if="b.kind === 'event'" class="event mono">
+        <div v-else-if="b.kind === 'event'" class="event mono" data-testid="chat-event">
           <template v-if="b.event.type === 'tool_call'">
             → {{ b.event.name }} {{ JSON.stringify(b.event.args) }}
           </template>
@@ -188,7 +177,7 @@ function onKey(e: KeyboardEvent) {
         </div>
       </template>
 
-      <div v-if="busy" class="typing">Agent thinking…</div>
+      <div v-if="busy" class="typing" data-testid="chat-busy">Agent thinking…</div>
     </div>
 
     <form class="composer" @submit.prevent="send">
@@ -222,38 +211,6 @@ function onKey(e: KeyboardEvent) {
   border-radius: var(--radius);
   background: var(--surface);
   overflow: hidden;
-}
-
-.recall-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.6rem 0.85rem;
-  background: color-mix(in oklab, var(--accent) 10%, var(--surface));
-  border-bottom: 1px solid color-mix(in oklab, var(--accent) 22%, var(--border));
-  flex-shrink: 0;
-}
-.recall-info {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  min-width: 0;
-}
-.recall-title {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--ink);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.recall-meta {
-  font-size: 0.68rem;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .thread {
@@ -356,7 +313,7 @@ function onKey(e: KeyboardEvent) {
   grid-template-columns: 1fr auto;
   gap: 0.65rem;
   padding: 0.85rem;
-  border-top: 1px solid var(--border);
+  border-top: none;
   background: var(--surface);
 }
 

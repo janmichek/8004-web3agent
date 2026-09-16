@@ -194,7 +194,7 @@ function openChat() {
 </script>
 
 <template>
-  <section class="wizard">
+  <section class="wizard" data-testid="create-dialog">
     <header class="head">
       <h2>Create agent</h2>
       <button type="button" class="btn ghost small" :disabled="busy" @click="emit('cancel')">
@@ -202,7 +202,7 @@ function openChat() {
       </button>
     </header>
 
-    <p v-if="loadError" class="banner">{{ loadError }}</p>
+    <p v-if="loadError" class="banner" data-testid="create-load-error">{{ loadError }}</p>
 
     <!-- Environment -->
     <div v-else-if="phase === 'env'" class="body">
@@ -223,7 +223,7 @@ function openChat() {
       </dl>
       <p v-else class="hint">Loading environment…</p>
       <div class="nav">
-        <button type="button" class="btn primary" :disabled="!catalog" @click="phase = 'name'">
+        <button type="button" class="btn primary" data-testid="create-env-continue" :disabled="!catalog" @click="phase = 'name'">
           Continue
         </button>
       </div>
@@ -240,13 +240,14 @@ function openChat() {
           placeholder="my-agent"
           spellcheck="false"
           autofocus
+          data-testid="create-name-input"
           @keydown.enter.prevent="goConfigure"
         />
       </label>
       <p class="hint">Letters, numbers, . _ - (1–63 chars)</p>
       <div class="nav">
-        <button type="button" class="btn ghost" @click="phase = 'env'">Back</button>
-        <button type="button" class="btn primary" :disabled="!nameValid" @click="goConfigure">
+        <button type="button" class="btn ghost" data-testid="create-name-back" @click="phase = 'env'">Back</button>
+        <button type="button" class="btn primary" data-testid="create-name-continue" :disabled="!nameValid" @click="goConfigure">
           Continue
         </button>
       </div>
@@ -261,6 +262,7 @@ function openChat() {
           <label class="check" :class="{ pale: isActionPale(a.name) }">
             <input
               type="checkbox"
+              :data-testid="`create-action-${a.name}`"
               :checked="selectedActions.includes(a.name)"
               @change="toggleAction(a.name)"
             />
@@ -275,6 +277,7 @@ function openChat() {
           <label class="check" :class="{ pale: isToolPale(t.name) }">
             <input
               type="checkbox"
+              :data-testid="`create-tool-${t.name}`"
               :checked="selectedTools.includes(t.name)"
               @change="toggleTool(t.name)"
             />

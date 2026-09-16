@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, unref, watch } from 'vue'
 import { useBalance } from '@wagmi/vue'
 import { formatEther, isAddress, type Address } from 'viem'
-import { fetchAgents, type AgentSummary } from '../api'
+import { fetchAgents, fetchHealth, fundAgent, type AgentSummary } from '../api'
 
 const props = defineProps<{
   selectName?: string | null
@@ -37,6 +37,42 @@ const walletScanUrl = computed(() => {
   return `${base}/address/${address}`
 })
 
+const masterScanUrl = computed(() => {
+  if (!masterAddress.value) return null
+  const base = masterChainId.value === 42161 ? 'https://arbiscan.io' : 'https://sepolia.arbiscan.io'
+  return `${base}/address/${masterAddress.value}`
+})
+
+const canSend = computed(() => {
+  if (!props.agent?.name || !addr.value || fundBusy.value) return false
+  const n = Number(fundAmount.value)
+  return Number.isFinite(n) && n > 0 && n <= 1
+})
+
+function friendlyError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : typeof err === 'string' ? err : 'Transfer failed'
+  const line = (raw.split('\n')[0] || raw)
+  if (/insufficient funds|insufficient balance/i.test(line)) return 'Master wallet has insufficient ETH.'
+  if (/exceeds defined limit|limit exceeded|-32005|429/i.test(line)) return 'RPC rate limit hit. Wait a few seconds and retry.'
+  return line
+}
+
+async function fund() {
+  if (!canSend.value || !props.agent?.name) return
+  fundStatusText.value = 'Sending from master wallet…'
+  fundStatusKind.value = 'info'
+  fundBusy.value = true
+  try {
+    const r = await fundAgent(props.agent.name, fundAmount.value)
+    fundStatusText.value = `Sent ${r.txHash.slice(0, 10)}…`
+    fundStatusKind.value = 'ok'
+    emit('funded', r.txHash)
+  } catch (err) {
+    fundStatusText.value = friendlyError(err)
+    fundStatusKind.value = 'error'
+  } finally { fundBusy.value = false }
+}
+
 watch(
   () => props.refreshKey,
   () => {
@@ -47,10 +83,18 @@ watch(
 const agents = ref<AgentSummary[]>([])
 const selected = ref('')
 const loadError = ref('')
+const open = ref(false)
+const fundAmount = ref('0.001')
+const fundStatusText = ref('')
+const fundStatusKind = ref<'info' | 'ok' | 'error'>('info')
+const fundBusy = ref(false)
+const masterAddress = ref('')
+const masterChainId = ref(421614)
 
 const emit = defineEmits<{
   select: [agent: AgentSummary | null]
   create: []
+  funded: [txHash: string]
 }>()
 
 async function loadAgents() {
@@ -96,6 +140,12 @@ async function refreshAll() {
 
 onMounted(() => {
   void loadAgents()
+  void fetchHealth()
+    .then((h) => {
+      if (h.master?.address) masterAddress.value = h.master.address
+      if (h.chainId) masterChainId.value = h.chainId
+    })
+    .catch(() => {})
 })
 </script>
 
@@ -104,16 +154,15 @@ onMounted(() => {
     <header class="card-head">
       <h2>Agent</h2>
       <div class="head-actions">
-        <button type="button" class="btn ghost small" @click="refreshAll">Refresh</button>
-        <button type="button" class="btn primary small" @click="emit('create')">
+        <button type="button" class="btn ghost small icon-only" title="Refresh" aria-label="Refresh" data-testid="picker-refresh" @click="refreshAll">↻</button>
+        <button type="button" class="btn primary small" data-testid="picker-create" @click="emit('create')">
           Create agent
         </button>
       </div>
     </header>
 
     <div class="pick">
-      <label for="agent-select">Selection</label>
-      <select id="agent-select" v-model="selected" data-testid="agent-select" :disabled="!agents.length">
+      <select id="agent-select" v-model="selected" data-testid="agent-select" :disabled="!agents.length" aria-label="Select agent">
         <option v-if="!agents.length" value="">No agents</option>
         <option v-for="a in agents" :key="a.name" :value="a.name">
           {{ a.name }}
@@ -121,7 +170,21 @@ onMounted(() => {
       </select>
     </div>
 
-    <p v-if="loadError" class="banner">{{ loadError }}</p>
+    <div class="sub-section">
+      <button
+        type="button"
+        class="title-toggle"
+        @click="open = !open"
+        :aria-expanded="open ? 'true' : 'false'"
+        title="Toggle Agent Info section"
+      >
+        <span class="chev" :class="{ closed: !open }" aria-hidden="true">▾</span>
+        <span class="sub-title">Agent Info</span>
+      </button>
+
+      <div v-show="open" class="collapsible-body">
+
+    <p v-if="loadError" class="banner" data-testid="picker-error">{{ loadError }}</p>
     <p v-else-if="!agents.length" class="hint">
       No agents yet — create one to get started (same flow as <code>npm run create-agent</code>).
     </p>
@@ -162,6 +225,36 @@ onMounted(() => {
         </div>
       </dl>
     </div>
+
+    <div v-if="agent" class="fund">
+      <span class="sub-title">Fund Agent</span>
+      <div v-if="masterAddress" class="master">
+        <dt>Master wallet</dt>
+        <dd class="mono">
+          <a
+            v-if="masterScanUrl"
+            :href="masterScanUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            >{{ masterAddress }} ↗</a
+          >
+          <span v-else>{{ masterAddress }}</span>
+        </dd>
+      </div>
+      <p v-if="!addr" class="hint">Select an agent with a wallet address.</p>
+      <template v-else>
+        <form class="form" @submit.prevent="fund">
+          <label class="field">
+            <span>Amount (ETH)</span>
+            <input v-model="fundAmount" type="text" inputmode="decimal" placeholder="0.001" data-testid="fund-amount" :disabled="fundBusy" />
+          </label>
+          <button class="btn primary" type="submit" data-testid="fund-submit" :disabled="!canSend">{{ fundBusy ? 'Sending…' : 'Send' }}</button>
+        </form>
+        <p v-if="fundStatusText" class="status" data-testid="fund-status" :class="fundStatusKind">{{ fundStatusText }}</p>
+      </template>
+    </div>
+      </div>
+    </div>
   </section>
 </template>
 
@@ -193,13 +286,6 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
-}
-
-.pick label {
-  font-size: 0.72rem;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 .pick select {
@@ -245,6 +331,11 @@ onMounted(() => {
   padding: 0.35rem 0.65rem;
   font-size: 0.75rem;
 }
+.btn.small.icon-only {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1;
+}
 
 .details {
   padding-top: 0;
@@ -279,10 +370,42 @@ onMounted(() => {
   text-decoration: underline;
 }
 
+.fund { display: flex; flex-direction: column; gap: 0.6rem; border-top: 1px solid var(--border); padding-top: 0.75rem; }
+.master dt { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.master dd { margin: 0.15rem 0 0; font-size: 0.85rem; word-break: break-all; }
+.master dd a { color: var(--accent); text-decoration: none; }
+.master dd a:hover { text-decoration: underline; }
+.form { display: flex; flex-direction: column; gap: 0.6rem; }
+.field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.75rem; color: var(--muted); }
+.field input { font: inherit; font-family: var(--font-mono); font-size: 0.9rem; padding: 0.6rem 0.75rem; border-radius: 0.4rem; border: 1px solid var(--border); background: var(--bg); color: var(--ink); }
+.status { margin: 0; font-size: 0.78rem; word-break: break-all; }
+.status.info { color: var(--muted); }
+.status.ok { color: #6ecf8e; }
+.status.error { color: #ffb4b0; }
+
 .head-actions {
   display: flex;
   align-items: center;
   gap: 0.45rem;
   flex-shrink: 0;
 }
+
+.title-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.title-toggle h2 { margin: 0; font-size: 0.95rem; font-weight: 600; }
+.sub-section { display: flex; flex-direction: column; gap: 0.6rem; }
+.sub-title { font-size: 0.8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.chev { font-size: 0.75rem; color: var(--muted); transition: transform 0.15s ease; }
+.chev.closed { transform: rotate(-90deg); }
+.collapsible-body { display: flex; flex-direction: column; gap: 0.75rem; }
 </style>

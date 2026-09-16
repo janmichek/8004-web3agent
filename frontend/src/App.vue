@@ -3,8 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useQueryClient } from '@tanstack/vue-query'
 import WalletBar from './components/WalletBar.vue'
 import AgentPicker from './components/AgentPicker.vue'
-import AgentWallet from './components/AgentWallet.vue'
 import AgentMemory from './components/AgentMemory.vue'
+import AgentStats from './components/AgentStats.vue'
 import AgentChat from './components/AgentChat.vue'
 import CreateAgent from './components/CreateAgent.vue'
 import type { AgentSummary, MemorySession } from './api'
@@ -58,10 +58,14 @@ function onMemoryChat() {
 
 function onRecall(session: MemorySession) {
   recalledSession.value = session
-  showConvos.value = false
+  // keep the Conversations panel open so the selection stays visible
 }
 
-function onClearRecall() {
+function toggleConvos() {
+  showConvos.value = !showConvos.value
+}
+
+function onNewChat() {
   recalledSession.value = null
 }
 
@@ -95,16 +99,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
           :refresh-key="refreshKey"
           @select="onSelect"
           @create="showCreate = true"
+          @funded="onFunded"
         />
 
         <hr class="divider" />
 
-        <AgentWallet
-          :agent-address="selectedAgent?.walletAddress"
-          :agent-name="selectedAgent?.name"
-          :refresh-key="refreshKey"
-          @funded="onFunded"
-        />
+        <AgentStats :agent="selectedAgent" :refresh-key="refreshKey" />
       </aside>
 
       <div class="main">
@@ -113,17 +113,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
             type="button"
             class="btn ghost convo-btn"
             :aria-expanded="showConvos ? 'true' : 'false'"
-            @click="showConvos = !showConvos"
+            :aria-pressed="showConvos ? 'true' : 'false'"
+            @click="toggleConvos"
           >
             <span class="burger" aria-hidden="true"><i></i><i></i><i></i></span>
             Conversations
           </button>
-          <span v-if="recalledSession" class="recalled-hint mono">{{ recalledSession.title }}</span>
         </div>
 
         <div class="main-body">
           <div v-show="showConvos" class="convos">
-            <AgentMemory :agent="selectedAgent" :refresh-key="refreshKey" @recall="onRecall" />
+            <AgentMemory :agent="selectedAgent" :refresh-key="refreshKey" @recall="onRecall" @new-chat="onNewChat" />
           </div>
 
           <div class="chat-col">
@@ -131,7 +131,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
               :agent="selectedAgent"
               :recalled-session="recalledSession"
               @chat="onMemoryChat"
-              @clear-recall="onClearRecall"
             />
           </div>
         </div>
@@ -211,7 +210,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
   align-items: center;
   gap: 0.75rem;
   padding: 0.65rem 1rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: none;
   flex-shrink: 0;
 }
 
@@ -233,13 +232,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
   background: currentColor;
   border-radius: 2px;
 }
-
-.recalled-hint {
-  font-size: 0.75rem;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.stats-icon {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+.convo-btn[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .main-body {
@@ -250,10 +249,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
 }
 
 .convos {
-  width: min(22rem, 40%);
-  min-width: 16rem;
+  width: min(17rem, 30%);
+  min-width: 13rem;
   flex-shrink: 0;
-  border-right: 1px solid var(--border);
+  border-right: none;
   overflow-y: auto;
   padding: 1rem 1rem 2rem;
 }
@@ -288,7 +287,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
 }
 .chat-col :deep(.composer) {
   background: transparent;
-  border-top: 1px solid var(--border);
+  border-top: none;
   padding-left: 0;
   padding-right: 0;
 }

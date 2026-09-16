@@ -598,6 +598,81 @@ app.post("/api/agents/:name/chat", async (c) => {
   }
 });
 
+app.post("/api/agents/:name/feedback", async (c) => {
+  const name = c.req.param("name");
+  if (!listExistingAgents().includes(name)) {
+    return c.json({ error: "Agent not found" }, 404);
+  }
+
+  let body: {
+    agentId?: string;
+    value?: unknown;
+    tag?: string;
+    endpoint?: string;
+    comment?: string;
+  };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  // Default target: the agent's own registered agentId.
+  const summary = publicAgentSummary(name);
+  const agentId = body.agentId?.trim() || summary.agentId;
+  if (!agentId) {
+    return c.json({ error: "agentId is required" }, 400);
+  }
+  if (typeof body.value !== "number" || !Number.isFinite(body.value)) {
+    return c.json({ error: "value must be a number 0-100" }, 400);
+  }
+
+  try {
+    const { giveFeedback } = await import("../core/reputation.js");
+    const { getNetworkNameByChainId, getChainId } = await import("../core/config.js");
+    const result = await giveFeedback({
+      agentId,
+      value: body.value,
+      tag: body.tag,
+      endpoint: body.endpoint,
+      comment: body.comment,
+    });
+    const chainId = summary.walletChainId ?? getChainId();
+    let networkSlug = "arbitrum-sepolia";
+    try {
+      networkSlug = getNetworkNameByChainId(chainId);
+    } catch { /* keep default */ }
+    const numericId = String(agentId).split(":").pop();
+    return c.json({
+      ok: true,
+      ...result,
+      scanUrl: `https://8004scan.io/agents/${networkSlug}/${numericId}`,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Missing signer is a client-config error, not a server crash.
+    if (msg.includes("RATER_PRIVATE_KEY")) {
+      return c.json({ error: msg }, 500);
+    }
+    return c.json({ error: msg }, 500);
+  }
+});
+
+app.get("/api/reputation/:agentId", async (c) => {
+  const agentId = c.req.param("agentId")?.trim();
+  if (!agentId) {
+    return c.json({ error: "agentId is required" }, 400);
+  }
+  try {
+    const { getReputationSummary } = await import("../core/reputation.js");
+    const summary = await getReputationSummary(agentId, c.req.query("tag"));
+    return c.json({ agentId, ...summary });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return c.json({ error: msg }, 500);
+  }
+});
+
 if (!process.env.VERCEL) {
   console.log(`web3agent API listening on http://localhost:${PORT}`);
   serve({ fetch: app.fetch, port: PORT });
