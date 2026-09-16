@@ -49,6 +49,10 @@ const canSend = computed(() => {
   return Number.isFinite(n) && n > 0 && n <= 1
 })
 
+function shortAddr(a: string): string {
+  return a.length > 13 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a
+}
+
 function friendlyError(err: unknown): string {
   const raw = err instanceof Error ? err.message : typeof err === 'string' ? err : 'Transfer failed'
   const line = (raw.split('\n')[0] || raw)
@@ -77,6 +81,7 @@ watch(
   () => props.refreshKey,
   () => {
     if (hasTarget.value) void eth.refetch()
+    void loadAgents()
   },
 )
 
@@ -199,9 +204,10 @@ onMounted(() => {
               :href="walletScanUrl"
               target="_blank"
               rel="noopener noreferrer"
-              >{{ agent.walletAddress }} ↗</a
+              :title="agent.walletAddress"
+              >{{ shortAddr(agent.walletAddress) }} ↗</a
             >
-            <span v-else>{{ agent.walletAddress }}</span>
+            <span v-else :title="agent.walletAddress">{{ shortAddr(agent.walletAddress) }}</span>
           </dd>
         </div>
         <div>
@@ -236,9 +242,10 @@ onMounted(() => {
             :href="masterScanUrl"
             target="_blank"
             rel="noopener noreferrer"
-            >{{ masterAddress }} ↗</a
+            :title="masterAddress"
+            >{{ shortAddr(masterAddress) }} ↗</a
           >
-          <span v-else>{{ masterAddress }}</span>
+          <span v-else :title="masterAddress">{{ shortAddr(masterAddress) }}</span>
         </dd>
       </div>
       <p v-if="!addr" class="hint">Select an agent with a wallet address.</p>

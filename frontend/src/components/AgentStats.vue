@@ -69,7 +69,7 @@ const topTools = computed(() => {
 
 <template>
   <section class="card stats" data-testid="agent-stats">
-    <header class="card-head">
+    <div class="sub-section">
       <button
         type="button"
         class="title-toggle"
@@ -78,11 +78,10 @@ const topTools = computed(() => {
         title="Toggle Chat Stats section"
       >
         <span class="chev" :class="{ closed: !open }" aria-hidden="true">▾</span>
-        <h2 class="title"><span class="brain">📊</span> Chat Stats</h2>
+        <span class="sub-title">Chat Stats</span>
       </button>
-    </header>
 
-    <div v-show="open" class="collapsible-body">
+      <div v-show="open" class="collapsible-body">
     <p v-if="!agent?.name" class="hint">Select an agent to see its stats.</p>
 
     <template v-else>
@@ -103,8 +102,6 @@ const topTools = computed(() => {
         </div>
 
         <template v-else>
-          <p class="summary">{{ memory.summary }}</p>
-
           <div class="grid">
             <div class="stat">
               <span class="k">Messages</span>
@@ -114,7 +111,7 @@ const topTools = computed(() => {
             <div class="stat">
               <span class="k">Checkpoints</span>
               <span class="v">{{ memory.checkpointCount }}</span>
-              <span class="sub mono">{{ memory.threads.join(', ') }} · {{ memory.sessions.length }} session{{ memory.sessions.length !== 1 ? 's' : '' }}</span>
+              <span class="sub mono">{{ memory.sessions.length }} session{{ memory.sessions.length !== 1 ? 's' : '' }}</span>
             </div>
             <div class="stat">
               <span class="k">Last active</span>
@@ -172,18 +169,13 @@ const topTools = computed(() => {
         </template>
       </template>
     </template>
+      </div>
     </div>
   </section>
 </template>
 
 <style scoped>
-.card { display: flex; flex-direction: column; gap: 0.7rem; padding: 1rem 1.1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
-.card-head { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; }
-.card-head h2 { margin: 0; font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 0.35rem; }
-.brain { font-size: 1rem; line-height: 1; }
-.head-actions { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
-.btn.small { padding: 0.35rem 0.65rem; font-size: 0.75rem; }
-.btn.small.icon-only { padding: 0.35rem 0.5rem; font-size: 0.9rem; line-height: 1; }
+.card { display: flex; flex-direction: column; gap: 0.75rem; padding: 1rem 1.1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 .hint { margin: 0; font-size: 0.82rem; color: var(--muted); line-height: 1.45; }
 .hint code { font-family: var(--font-mono); font-size: 0.78em; background: color-mix(in oklab, var(--border) 60%, transparent); padding: 0.12em 0.3em; border-radius: 0.25em; }
 .banner { margin: 0; padding: 0.55rem 0.65rem; background: color-mix(in oklab, var(--warn) 12%, var(--surface)); color: var(--warn); font-size: 0.82rem; border: 1px solid var(--border); border-radius: 0.4rem; word-break: break-all; }
@@ -192,10 +184,9 @@ const topTools = computed(() => {
 .empty { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.6rem 0.75rem; border: 1px dashed var(--border); border-radius: 0.45rem; background: color-mix(in oklab, var(--bg) 60%, var(--surface)); }
 .empty-title { margin: 0; font-size: 0.85rem; font-weight: 600; }
 .empty-meta { margin: 0; display: flex; gap: 0.8rem; font-size: 0.72rem; color: var(--muted); list-style: none; padding: 0; }
-.summary { margin: 0; font-size: 0.84rem; line-height: 1.45; color: var(--ink); background: color-mix(in oklab, var(--accent) 7%, var(--surface)); border: 1px solid color-mix(in oklab, var(--accent) 18%, var(--border)); padding: 0.55rem 0.65rem; border-radius: 0.45rem; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
 .stat { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.6rem 0.65rem; border: 1px solid var(--border); border-radius: 0.45rem; background: var(--bg); min-width: 0; }
-.stat .k { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.stat .k { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
 .stat .v { font-size: 1rem; font-weight: 700; line-height: 1.1; color: var(--ink); }
 .stat .v.small { font-size: 0.85rem; }
 .stat .sub { font-size: 0.68rem; color: var(--muted); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -211,10 +202,10 @@ const topTools = computed(() => {
 .addr { font-size: 0.73rem; color: var(--accent); text-decoration: none; padding: 0.18rem 0.4rem; border: 1px solid color-mix(in oklab, var(--accent) 20%, var(--border)); border-radius: 0.3rem; background: color-mix(in oklab, var(--accent) 6%, var(--surface)); }
 .addr:hover { text-decoration: underline; }
 .more { font-size: 0.72rem; color: var(--muted); }
-.foot { margin: 0.1rem 0 0; font-size: 0.68rem; color: var(--muted); word-break: break-all; }
-.foot code { font-size: 0.95em; padding: 0.1em 0.28em; border-radius: 0.25em; background: color-mix(in oklab, var(--border) 55%, transparent); }
 .title-toggle { display: inline-flex; align-items: center; gap: 0.4rem; background: none; border: none; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; }
+.sub-section { display: flex; flex-direction: column; gap: 0.6rem; }
+.sub-title { font-size: 0.8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .chev { font-size: 0.75rem; color: var(--muted); transition: transform 0.15s ease; }
 .chev.closed { transform: rotate(-90deg); }
-.collapsible-body { display: flex; flex-direction: column; gap: 0.7rem; }
+.collapsible-body { display: flex; flex-direction: column; gap: 0.75rem; }
 </style>

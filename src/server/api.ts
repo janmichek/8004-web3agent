@@ -105,9 +105,12 @@ function listExistingAgents(): string[] {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       if (!e.isDirectory()) continue;
       // On Vercel, existence of wallet via env is enough; on FS check wallet.json
+      // Also include config-only agents (agent-config.json without wallet yet)
+      // so newly created agents always appear in the picker.
       const walletPath = path.join(dir, e.name, "wallet.json");
+      const configPath = path.join(dir, e.name, "agent-config.json");
       const envPk = process.env[`AGENT_${agentEnvSuffix(e.name)}_PRIVATE_KEY`];
-      if (fs.existsSync(walletPath) || envPk) fromFs.add(e.name);
+      if (fs.existsSync(walletPath) || fs.existsSync(configPath) || envPk) fromFs.add(e.name);
     }
   }
   // Merge env agents

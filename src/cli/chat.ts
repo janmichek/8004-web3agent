@@ -31,7 +31,12 @@ function listExistingAgents(): string[] {
   if (!fs.existsSync(AGENTS_DIR)) return [];
   return fs
     .readdirSync(AGENTS_DIR, { withFileTypes: true })
-    .filter((e) => e.isDirectory() && fs.existsSync(`${AGENTS_DIR}/${e.name}/wallet.json`))
+    .filter(
+      (e) =>
+        e.isDirectory() &&
+        (fs.existsSync(`${AGENTS_DIR}/${e.name}/wallet.json`) ||
+          fs.existsSync(`${AGENTS_DIR}/${e.name}/agent-config.json`)),
+    )
     .map((e) => e.name);
 }
 

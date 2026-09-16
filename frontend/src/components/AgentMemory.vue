@@ -128,6 +128,10 @@ function onNewChat() {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 .card-head {
   display: flex;
@@ -283,7 +287,7 @@ function onNewChat() {
   align-items: baseline;
   margin-top: 0.2rem;
 }
-.convos-top { display: flex; }
+.convos-top { display: flex; flex-shrink: 0; }
 .convos-top .btn { flex: 1; justify-content: center; }
 .small { font-size: 0.7rem; }
 .muted { color: var(--muted); }
@@ -292,9 +296,11 @@ function onNewChat() {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  max-height: 22rem;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding-right: 0.2rem;
+  padding-bottom: 0.5rem;
   scrollbar-width: thin;
 }
 

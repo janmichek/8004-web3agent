@@ -102,8 +102,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
           @funded="onFunded"
         />
 
-        <hr class="divider" />
-
         <AgentStats :agent="selectedAgent" :refresh-key="refreshKey" />
       </aside>
 
@@ -176,7 +174,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
 .side {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 1.25rem;
   min-height: 0;
   overflow-y: auto;
   padding: 1.25rem 1.25rem 2rem;
@@ -189,12 +187,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
   border-radius: 0;
   background: transparent;
   padding: 0;
-}
-
-.divider {
-  border: none;
-  border-top: 1px solid var(--border);
-  margin: 1.25rem 0;
 }
 
 .main {
@@ -252,9 +244,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
   width: min(17rem, 30%);
   min-width: 13rem;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  align-self: stretch;
   border-right: none;
-  overflow-y: auto;
-  padding: 1rem 1rem 2rem;
+  overflow: hidden;
+  padding: 1rem 1rem 1rem;
 }
 
 /* strip card chrome inside conversations drawer */
@@ -263,6 +259,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
   border-radius: 0;
   background: transparent;
   padding: 0;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
 }
 
 .chat-col {
@@ -272,7 +271,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 1rem 1.25rem 1.5rem;
+  padding: 1rem 1.25rem 0.5rem;
 }
 
 /* chat itself stays borderless full-height */
@@ -290,6 +289,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
   border-top: none;
   padding-left: 0;
   padding-right: 0;
+  padding-bottom: 0;
 }
 
 .dialog-backdrop {

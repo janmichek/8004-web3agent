@@ -11,7 +11,6 @@ import {
 
 type Phase =
   | 'env'
-  | 'name'
   | 'configure'
   | 'fund'
   | 'creating'
@@ -58,27 +57,6 @@ const createdScanUrl = computed(() => {
   const agentId = createdAgent.value?.agentId
   if (!agentId) return null
   return scanUrlForAgent(agentId, createdAgent.value?.walletChainId ?? 421614)
-})
-
-const actionToolNames = computed(() => {
-  const names = new Set<string>()
-  for (const actionName of selectedActions.value) {
-    const entry = catalog.value?.actions.find((a) => a.name === actionName)
-    if (entry) for (const t of entry.toolNames) names.add(t)
-  }
-  return names
-})
-
-const selectionSummary = computed(() => {
-  const lines: string[] = []
-  if (selectedActions.value.length) {
-    lines.push(`Actions: ${selectedActions.value.join(', ')}`)
-    lines.push(`  Tools: ${[...actionToolNames.value].join(', ')}`)
-  }
-  if (selectedTools.value.length) {
-    lines.push(`Standalone tools: ${selectedTools.value.join(', ')}`)
-  }
-  return lines.length ? lines.join('\n') : '(nothing selected)'
 })
 
 const nameValid = computed(() =>
@@ -197,14 +175,21 @@ function openChat() {
   <section class="wizard" data-testid="create-dialog">
     <header class="head">
       <h2>Create agent</h2>
-      <button type="button" class="btn ghost small" :disabled="busy" @click="emit('cancel')">
-        Cancel
+      <button
+        type="button"
+        class="btn ghost small icon-btn"
+        aria-label="Close"
+        title="Close"
+        :disabled="busy"
+        @click="emit('cancel')"
+      >
+        ✕
       </button>
     </header>
 
     <p v-if="loadError" class="banner" data-testid="create-load-error">{{ loadError }}</p>
 
-    <!-- Environment -->
+    <!-- Environment + name (merged first step) -->
     <div v-else-if="phase === 'env'" class="body">
       <p class="step-label">Environment</p>
       <dl v-if="catalog" class="env">
@@ -222,18 +207,8 @@ function openChat() {
         </div>
       </dl>
       <p v-else class="hint">Loading environment…</p>
-      <div class="nav">
-        <button type="button" class="btn primary" data-testid="create-env-continue" :disabled="!catalog" @click="phase = 'name'">
-          Continue
-        </button>
-      </div>
-    </div>
-
-    <!-- Name -->
-    <div v-else-if="phase === 'name'" class="body">
       <p class="step-label">Agent name</p>
       <label class="field">
-        <span>Name</span>
         <input
           v-model="agentName"
           type="text"
@@ -246,14 +221,13 @@ function openChat() {
       </label>
       <p class="hint">Letters, numbers, . _ - (1–63 chars)</p>
       <div class="nav">
-        <button type="button" class="btn ghost" data-testid="create-name-back" @click="phase = 'env'">Back</button>
-        <button type="button" class="btn primary" data-testid="create-name-continue" :disabled="!nameValid" @click="goConfigure">
-          Continue
+        <button type="button" class="btn primary" data-testid="create-name-continue" :disabled="!catalog || !nameValid" @click="goConfigure">
+          Next →
         </button>
       </div>
     </div>
 
-    <!-- Configure (step 3) — flat tools & actions -->
+    <!-- Configure (step 2) — flat tools & actions -->
     <div v-else-if="phase === 'configure'" class="body">
       <p class="step-label">Configure your agent — tools &amp; actions</p>
       <ul class="checklist">
@@ -268,7 +242,7 @@ function openChat() {
             />
             <span>
               <strong>{{ a.name }} <span class="badge">action</span></strong>
-              <em>{{ a.description }} [tools: {{ a.toolNames.join(', ') }}]</em>
+              <em>{{ a.description }} [tools: {{ a.toolNames.join(', ') }}]<template v-if="a.name === 'transfer-eth'"> · Mutually exclusive with send_eth + get_token_balance standalone tools.</template></em>
             </span>
           </label>
         </li>
@@ -283,16 +257,14 @@ function openChat() {
             />
             <span>
               <strong>{{ t.name }} <span class="badge tool">tool</span></strong>
-              <em>{{ t.description }}</em>
+              <em>{{ t.description }}<template v-if="t.name === 'send_eth' || t.name === 'get_token_balance'"> · Mutually exclusive with transfer-eth action.</template></em>
             </span>
           </label>
         </li>
       </ul>
-      <p class="hint">transfer-eth ↔ send_eth + get_token_balance are mutually exclusive.</p>
-      <pre class="summary">{{ selectionSummary }}</pre>
       <div class="nav">
-        <button type="button" class="btn ghost" @click="phase = 'name'">Back</button>
-        <button type="button" class="btn primary" @click="phase = 'fund'">Continue</button>
+        <button type="button" class="btn ghost" @click="phase = 'env'">← Back</button>
+        <button type="button" class="btn primary" @click="phase = 'fund'">Next →</button>
       </div>
     </div>
 
@@ -313,9 +285,8 @@ function openChat() {
         <input v-model="skipRegister" type="checkbox" />
         <span>Skip ERC-8004 registration</span>
       </label>
-      <pre class="summary">{{ selectionSummary }}</pre>
       <div class="nav">
-        <button type="button" class="btn ghost" @click="phase = 'configure'">Back</button>
+        <button type="button" class="btn ghost" @click="phase = 'configure'">← Back</button>
         <button
           type="button"
           class="btn primary"
@@ -398,7 +369,7 @@ function openChat() {
       <p class="step-label">Creation failed</p>
       <p class="banner">{{ createError }}</p>
       <div class="nav">
-        <button type="button" class="btn ghost" @click="phase = 'fund'">Back</button>
+        <button type="button" class="btn ghost" @click="phase = 'fund'">← Back</button>
         <button type="button" class="btn primary" @click="submitCreate">Retry</button>
       </div>
     </div>
@@ -552,19 +523,6 @@ function openChat() {
   color: var(--muted);
 }
 
-.summary {
-  margin: 0;
-  padding: 0.65rem 0.75rem;
-  border-radius: 0.4rem;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: var(--muted);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
 .checklist {
   list-style: none;
   margin: 0;
@@ -639,10 +597,26 @@ function openChat() {
 
 .nav {
   display: flex;
-  justify-content: flex-end;
-  gap: 0.55rem;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 0.6rem;
   margin-top: auto;
-  padding-top: 0.5rem;
+  margin-left: -1.15rem;
+  margin-right: -1.15rem;
+  margin-bottom: -1.25rem;
+  padding: 0.9rem 1.15rem;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.nav > :only-child {
+  margin-left: auto;
+}
+
+.nav .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .banner {
@@ -693,5 +667,11 @@ function openChat() {
 .btn.small {
   padding: 0.35rem 0.65rem;
   font-size: 0.75rem;
+}
+
+.btn.small.icon-btn {
+  padding: 0.35rem 0.55rem;
+  font-size: 0.85rem;
+  line-height: 1;
 }
 </style>
