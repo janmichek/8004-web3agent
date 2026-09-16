@@ -22,6 +22,10 @@
     "frontend": "npm run dev --prefix frontend",
     "dev": "concurrently --kill-others --names \"api,frontend\" --prefix-colors \"cyan,magenta\" \"npm run serve\" \"npm run frontend\"",
     "frontend:build": "npm run build --prefix frontend",
+    "test:e2e": "npm run test:e2e --prefix frontend",
+    "test:e2e:offline": "npm run test:e2e:offline --prefix frontend",
+    "test:e2e:onchain": "npm run test:e2e:onchain --prefix frontend",
+    "test:e2e:ui": "npm run test:e2e:ui --prefix frontend",
     "test": "npx tsx src/cli/test-workflow.ts"
   },
   "keywords": [
