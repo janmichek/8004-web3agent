@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import {
   createAgent,
   fetchCatalog,
+  scanUrlForAgent,
   type AgentSummary,
   type CatalogResponse,
   type CreateAgentStep,
@@ -37,6 +38,27 @@ const skipRegister = ref(false)
 const createSteps = ref<CreateAgentStep[]>([])
 const createdAgent = ref<AgentSummary | null>(null)
 const createdBalance = ref('')
+
+const createdWalletScanUrl = computed(() => {
+  const address = createdAgent.value?.walletAddress
+  if (!address) return null
+  const chainId = createdAgent.value?.walletChainId ?? 421614
+  const base = chainId === 42161 ? 'https://arbiscan.io' : 'https://sepolia.arbiscan.io'
+  return `${base}/address/${address}`
+})
+
+const createdScanId = computed(() => {
+  const agentId = createdAgent.value?.agentId
+  if (!agentId) return null
+  const parts = agentId.split(':')
+  return parts[parts.length - 1] || agentId
+})
+
+const createdScanUrl = computed(() => {
+  const agentId = createdAgent.value?.agentId
+  if (!agentId) return null
+  return scanUrlForAgent(agentId, createdAgent.value?.walletChainId ?? 421614)
+})
 
 const actionToolNames = computed(() => {
   const names = new Set<string>()
@@ -318,11 +340,29 @@ function openChat() {
         </div>
         <div v-if="createdAgent.agentId">
           <dt>Agent ID</dt>
-          <dd class="mono">{{ createdAgent.agentId }}</dd>
+          <dd class="mono">
+            <a
+              v-if="createdScanUrl && createdScanId"
+              :href="createdScanUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              >#{{ createdScanId }} ↗</a
+            >
+            <span v-else>#{{ createdAgent.agentId }}</span>
+          </dd>
         </div>
         <div>
           <dt>Wallet</dt>
-          <dd class="mono">{{ createdAgent.walletAddress }}</dd>
+          <dd class="mono">
+            <a
+              v-if="createdWalletScanUrl"
+              :href="createdWalletScanUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              >{{ createdAgent.walletAddress }} ↗</a
+            >
+            <span v-else>{{ createdAgent.walletAddress }}</span>
+          </dd>
         </div>
         <div>
           <dt>Balance</dt>
@@ -426,6 +466,15 @@ function openChat() {
   margin: 0.1rem 0 0;
   font-size: 0.88rem;
   word-break: break-all;
+}
+
+.env dd a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.env dd a:hover {
+  text-decoration: underline;
 }
 
 .field {

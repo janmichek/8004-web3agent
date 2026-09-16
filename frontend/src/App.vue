@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useQueryClient } from '@tanstack/vue-query'
 import WalletBar from './components/WalletBar.vue'
 import AgentPicker from './components/AgentPicker.vue'
@@ -18,12 +18,12 @@ function networkSlug(chainId: number): string {
 const selectedAgent = ref<AgentSummary | null>(null)
 const refreshKey = ref(0)
 const showCreate = ref(false)
+const showConvos = ref(false)
 const pendingSelect = ref<string | null>(null)
 const recalledSession = ref<MemorySession | null>(null)
 const queryClient = useQueryClient()
 
 function extractNumericId(agentId: string): string {
-  // agentId may be "421614:204" or "eip155:421614:204" – we want the trailing numeric part
   const parts = agentId.split(':')
   return parts[parts.length - 1] || agentId
 }
@@ -58,6 +58,7 @@ function onMemoryChat() {
 
 function onRecall(session: MemorySession) {
   recalledSession.value = session
+  showConvos.value = false
 }
 
 function onClearRecall() {
@@ -71,6 +72,13 @@ function onCreated(agent: AgentSummary) {
   refreshKey.value += 1
   void queryClient.invalidateQueries()
 }
+
+function onDialogKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && showCreate.value) showCreate.value = false
+}
+
+onMounted(() => window.addEventListener('keydown', onDialogKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
 </script>
 
 <template>
@@ -89,31 +97,58 @@ function onCreated(agent: AgentSummary) {
           @create="showCreate = true"
         />
 
+        <hr class="divider" />
+
         <AgentWallet
           :agent-address="selectedAgent?.walletAddress"
           :agent-name="selectedAgent?.name"
           :refresh-key="refreshKey"
           @funded="onFunded"
         />
-
-        <AgentMemory :agent="selectedAgent" :refresh-key="refreshKey" @recall="onRecall" />
       </aside>
 
       <div class="main">
-        <CreateAgent
-          v-if="showCreate"
-          @created="onCreated"
-          @cancel="showCreate = false"
-        />
-        <AgentChat
-          v-else
-          :agent="selectedAgent"
-          :recalled-session="recalledSession"
-          @chat="onMemoryChat"
-          @clear-recall="onClearRecall"
-        />
+        <div class="main-toolbar">
+          <button
+            type="button"
+            class="btn ghost convo-btn"
+            :aria-expanded="showConvos ? 'true' : 'false'"
+            @click="showConvos = !showConvos"
+          >
+            <span class="burger" aria-hidden="true"><i></i><i></i><i></i></span>
+            Conversations
+          </button>
+          <span v-if="recalledSession" class="recalled-hint mono">{{ recalledSession.title }}</span>
+        </div>
+
+        <div class="main-body">
+          <div v-show="showConvos" class="convos">
+            <AgentMemory :agent="selectedAgent" :refresh-key="refreshKey" @recall="onRecall" />
+          </div>
+
+          <div class="chat-col">
+            <AgentChat
+              :agent="selectedAgent"
+              :recalled-session="recalledSession"
+              @chat="onMemoryChat"
+              @clear-recall="onClearRecall"
+            />
+          </div>
+        </div>
       </div>
     </main>
+
+    <Teleport to="body">
+      <div
+        v-if="showCreate"
+        class="dialog-backdrop"
+        @click.self="showCreate = false"
+      >
+        <div class="dialog" role="dialog" aria-modal="true" aria-label="Create agent">
+          <CreateAgent @created="onCreated" @cancel="showCreate = false" />
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -131,21 +166,36 @@ function onCreated(agent: AgentSummary) {
   min-height: 0;
   overflow: hidden;
   display: grid;
-  grid-template-columns: minmax(16rem, 22rem) 1fr;
-  gap: 1.25rem;
-  padding: 1.25rem 1.5rem 2rem;
-  max-width: 1200px;
+  grid-template-columns: minmax(16rem, 21rem) 1fr;
+  max-width: none;
   width: 100%;
-  margin: 0 auto;
+  margin: 0;
+  padding: 0;
   box-sizing: border-box;
 }
 
 .side {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0;
   min-height: 0;
   overflow-y: auto;
+  padding: 1.25rem 1.25rem 2rem;
+}
+
+/* strip card chrome inside aside -> plain sections */
+.side :deep(.card),
+.side :deep(.panel) {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.25rem 0;
 }
 
 .main {
@@ -153,21 +203,151 @@ function onCreated(agent: AgentSummary) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  border-left: 1px solid var(--border);
+}
+
+.main-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.convo-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.burger {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.burger i {
+  display: block;
+  width: 14px;
+  height: 2px;
+  background: currentColor;
+  border-radius: 2px;
+}
+
+.recalled-hint {
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.main-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.convos {
+  width: min(22rem, 40%);
+  min-width: 16rem;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 1rem 1rem 2rem;
+}
+
+/* strip card chrome inside conversations drawer */
+.convos :deep(.card) {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.chat-col {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 1rem 1.25rem 1.5rem;
+}
+
+/* chat itself stays borderless full-height */
+.chat-col :deep(.chat) {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+.chat-col :deep(.thread) {
+  background: transparent;
+  padding: 1rem 0.25rem;
+}
+.chat-col :deep(.composer) {
+  background: transparent;
+  border-top: 1px solid var(--border);
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgb(4 8 12 / 0.65);
+  backdrop-filter: blur(4px);
+}
+
+.dialog {
+  width: min(36rem, 100%);
+  max-height: min(42rem, 90vh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.5);
+}
+
+/* wizard fills the dialog instead of acting as its own card */
+.dialog :deep(.wizard) {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  min-height: 0;
 }
 
 @media (max-width: 860px) {
   .layout {
     grid-template-columns: 1fr;
-    padding: 1rem;
     overflow-y: auto;
   }
   .side {
     overflow: visible;
-    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
   }
   .main {
-    flex: 1;
-    min-height: 24rem;
+    border-left: none;
+    min-height: 30rem;
+  }
+  .convos {
+    position: absolute;
+    z-index: 20;
+    background: var(--bg);
+    height: 100%;
+    width: min(20rem, 85%);
+    box-shadow: 8px 0 24px rgb(0 0 0 / 0.4);
+  }
+  .main-body {
+    position: relative;
   }
 }
 </style>
