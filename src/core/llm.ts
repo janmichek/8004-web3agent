@@ -186,15 +186,22 @@ class ChatOpenRouter extends BaseChatModel<ChatOpenRouterCallOptions> {
           ? this.boundTools
           : undefined;
 
-    const response = await this.client.chat.send({
-      chatGenerationParams: {
+    const response = (await this.client.chat.send({
+      chatRequest: {
         model: this.model,
-        messages: orMessages,
+        messages: orMessages as any,
         maxTokens: this.maxTokens,
         stream: false,
-        ...(tools ? { tools } : {}),
+        ...(tools ? { tools: tools as any } : {}),
       },
-    });
+    })) as unknown as {
+      choices?: Array<{
+        message: {
+          content?: string | unknown | null;
+          toolCalls?: Array<{ id: string; function: { name: string; arguments: string } }>;
+        };
+      }>;
+    };
 
     const choice = response.choices?.[0];
     if (process.env.DEBUG_LLM) {
