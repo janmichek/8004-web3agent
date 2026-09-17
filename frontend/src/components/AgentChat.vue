@@ -17,7 +17,7 @@ type Bubble =
   | { kind: 'user'; text: string }
   | { kind: 'agent'; text: string }
   | { kind: 'event'; event: ChatEvent }
-  | { kind: 'rate'; txHash: string }
+  | { kind: 'rate'; txHash: string; tag: string }
   | { kind: 'error'; text: string }
 
 const props = defineProps<{
@@ -134,7 +134,7 @@ async function send() {
     const onlyFeedbackTools =
       toolNames.length > 0 && toolNames.every((n) => n === 'give_feedback' || n === 'get_reputation')
     if (sawSuccessfulTool && !onlyFeedbackTools && props.agent?.agentId) {
-      bubbles.value.push({ kind: 'rate', txHash: lastSuccessTx ?? '' })
+      bubbles.value.push({ kind: 'rate', txHash: lastSuccessTx ?? '', tag: tagForTools(toolNames) })
     }
     emit('chat')
   } catch (err) {
@@ -147,6 +147,15 @@ async function send() {
     busy.value = false
     await scrollBottom()
   }
+}
+
+function tagForTools(toolNames: string[]): string {
+  const pick = toolNames.find((n) => n !== 'give_feedback' && n !== 'get_reputation') ?? ''
+  if (pick === 'send_eth') return 'transfer'
+  if (pick === 'get_token_balance') return 'balance'
+  if (pick === 'fetch_contract_abi') return 'contract-abi'
+  if (pick === 'call_contract') return 'contract-call'
+  return 'execution'
 }
 
 async function scrollBottom() {
@@ -190,6 +199,7 @@ function onKey(e: KeyboardEvent) {
             :owners="agent.owners"
             :operators="agent.operators"
             :tx-hash="b.txHash"
+            :initial-tag="b.tag"
           />
         </div>
         <div v-else-if="b.kind === 'event'" class="event mono" data-testid="chat-event">

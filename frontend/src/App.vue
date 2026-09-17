@@ -52,6 +52,14 @@ function onFunded() {
   void queryClient.invalidateQueries()
 }
 
+function onDeleted(_name: string) {
+  selectedAgent.value = null
+  recalledSession.value = null
+  pendingSelect.value = null
+  refreshKey.value += 1
+  void queryClient.invalidateQueries()
+}
+
 function onMemoryChat() {
   refreshKey.value += 1
 }
@@ -100,6 +108,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
           @select="onSelect"
           @create="showCreate = true"
           @funded="onFunded"
+          @deleted="onDeleted"
         />
 
         <AgentStats :agent="selectedAgent" :refresh-key="refreshKey" />

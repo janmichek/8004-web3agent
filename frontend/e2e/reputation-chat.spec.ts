@@ -45,12 +45,11 @@ test.describe('chat reputation after successful tx', () => {
     await expect(page.getByTestId('rate-submit')).toBeEnabled()
     await expect(page.getByTestId('rate-disabled')).toHaveCount(0)
 
-    await page.getByTestId('rate-comment').fill('playwright e2e rating')
     await page.getByTestId('rate-submit').click()
 
     // Fail fast on API error instead of waiting the full tx timeout
     await Promise.race([
-      expect(page.getByTestId('rate-result')).toBeVisible({ timeout: 120_000 }),
+      expect(page.getByTestId('rate-scan-link')).toBeVisible({ timeout: 120_000 }),
       expect(page.getByTestId('rate-error'))
         .toBeVisible({ timeout: 120_000 })
         .then(async () => {
@@ -58,9 +57,15 @@ test.describe('chat reputation after successful tx', () => {
         }),
     ])
     const scan = page.getByTestId('rate-scan-link').locator('a')
-    await expect(scan).toBeVisible()
-    const href = await scan.getAttribute('href')
-    expect(href).toMatch(/8004scan\.io\/agents\/arbitrum-sepolia\/\d+/)
+    await expect(scan.first()).toBeVisible()
+    const hrefs = await scan.allInnerTexts()
+    void hrefs
+    const href = await scan.nth(1).getAttribute('href')
+    expect(href).toMatch(/8004scan\.io\/agents\/arbitrum-sepolia\/\d+\?tab=feedback/)
+    const txHref = await scan.first().getAttribute('href')
+    expect(txHref).toMatch(/arbiscan\.io\/tx\/0x/)
+    await expect(page.getByTestId('rate-submit')).toBeDisabled()
+    await expect(page.getByTestId('rate-submit')).toContainText('Rated')
   })
 
   test('disables rate UI when connected wallet is owner', async ({ page }) => {

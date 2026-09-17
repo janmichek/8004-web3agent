@@ -154,6 +154,21 @@ export function loadAgentConfig(agentName: string): AgentConfig | null {
   return null
 }
 
+/** @notice Delete agent directory (config, wallet, memory). Returns true if anything was removed. */
+export function deleteAgentConfig(agentName: string): boolean {
+  let removed = false
+  const candidates = [AGENTS_DIR]
+  if (process.env.VERCEL) candidates.push(path.resolve(process.cwd(), "agents"))
+  for (const dir of candidates) {
+    const agentDir = path.join(dir, agentName)
+    if (fs.existsSync(agentDir)) {
+      fs.rmSync(agentDir, { recursive: true, force: true })
+      removed = true
+    }
+  }
+  return removed
+}
+
 /** @notice Migrate pre-ERC-8004 configs to the new schema. */
 function migrateLegacyConfig(legacy: Record<string, unknown>): AgentConfig {
   return {

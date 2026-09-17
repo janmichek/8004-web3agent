@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, unref, watch } from 'vue'
 import { useBalance } from '@wagmi/vue'
 import { formatEther, isAddress, type Address } from 'viem'
-import { fetchAgents, fetchHealth, fundAgent, type AgentSummary } from '../api'
+import { fetchAgents, fetchHealth, fetchReputation, fundAgent, deleteAgent, type AgentSummary } from '../api'
 
 const props = defineProps<{
   selectName?: string | null
@@ -93,13 +93,42 @@ const fundAmount = ref('0.001')
 const fundStatusText = ref('')
 const fundStatusKind = ref<'info' | 'ok' | 'error'>('info')
 const fundBusy = ref(false)
+const deleteBusy = ref(false)
+const deleteStatusText = ref('')
+const deleteConfirm = ref(false)
 const masterAddress = ref('')
 const masterChainId = ref(421614)
+const ratingText = ref('')
+const ratingLoading = ref(false)
+
+watch(
+  () => props.agent?.agentId,
+  (id) => {
+    void loadRating(id)
+  },
+)
+
+async function loadRating(agentId?: string) {
+  ratingText.value = ''
+  if (!agentId?.trim()) return
+  ratingLoading.value = true
+  try {
+    const r = await fetchReputation(agentId.trim())
+    ratingText.value = r.count
+      ? `★ ${r.averageValue.toFixed(1)}/100 · ${r.count} rating${r.count === 1 ? '' : 's'}`
+      : 'No ratings yet'
+  } catch {
+    ratingText.value = ''
+  } finally {
+    ratingLoading.value = false
+  }
+}
 
 const emit = defineEmits<{
   select: [agent: AgentSummary | null]
   create: []
   funded: [txHash: string]
+  deleted: [name: string]
 }>()
 
 async function loadAgents() {
@@ -143,8 +172,40 @@ async function refreshAll() {
   await loadAgents()
 }
 
+async function removeAgent() {
+  const name = props.agent?.name
+  if (!name || deleteBusy.value) return
+  if (!deleteConfirm.value) {
+    deleteConfirm.value = true
+    deleteStatusText.value = `Click Delete again to confirm removal of "${name}".`
+    return
+  }
+  deleteBusy.value = true
+  deleteStatusText.value = `Deleting "${name}"…`
+  try {
+    await deleteAgent(name)
+    deleteConfirm.value = false
+    deleteStatusText.value = ''
+    emit('deleted', name)
+    await loadAgents()
+  } catch (err) {
+    deleteStatusText.value = friendlyError(err)
+  } finally {
+    deleteBusy.value = false
+  }
+}
+
+watch(
+  () => props.agent?.name,
+  () => {
+    deleteConfirm.value = false
+    deleteStatusText.value = ''
+  },
+)
+
 onMounted(() => {
   void loadAgents()
+  void loadRating(props.agent?.agentId)
   void fetchHealth()
     .then((h) => {
       if (h.master?.address) masterAddress.value = h.master.address
@@ -196,6 +257,13 @@ onMounted(() => {
 
     <div v-if="agent" class="details">
       <dl>
+        <div v-if="agent.agentId">
+          <dt>ERC-8004</dt>
+          <dd class="mono">
+            <a v-if="scanUrl && scanId" :href="scanUrl" target="_blank" rel="noopener noreferrer">#{{ scanId }} ↗</a>
+            <span v-else>#{{ agent.agentId }}</span>
+          </dd>
+        </div>
         <div v-if="agent.walletAddress">
           <dt>Wallet</dt>
           <dd class="mono">
@@ -215,21 +283,42 @@ onMounted(() => {
           <dd class="mono">{{ ethDisplay }}</dd>
         </div>
         <div v-if="agent.agentId">
-          <dt>ERC-8004</dt>
-          <dd class="mono">
-            <a v-if="scanUrl && scanId" :href="scanUrl" target="_blank" rel="noopener noreferrer">#{{ scanId }} ↗</a>
-            <span v-else>#{{ agent.agentId }}</span>
-          </dd>
+          <dt>Rating</dt>
+          <dd class="mono" data-testid="agent-rating">{{ ratingLoading ? '…' : (ratingText || '—') }}</dd>
         </div>
         <div>
           <dt>Tools</dt>
-          <dd>{{ agent.tools.join(', ') || 'none' }}</dd>
+          <dd>
+            <div v-if="agent.tools.length" class="chips">
+              <span v-for="t in agent.tools" :key="t" class="chip mono">{{ t }}</span>
+            </div>
+            <span v-else class="muted">none</span>
+          </dd>
         </div>
         <div>
           <dt>Actions</dt>
-          <dd>{{ agent.actions.join(', ') || 'none' }}</dd>
+          <dd>
+            <div v-if="agent.actions.length" class="chips">
+              <span v-for="a in agent.actions" :key="a" class="chip mono">{{ a }}</span>
+            </div>
+            <span v-else class="muted">none</span>
+          </dd>
         </div>
       </dl>
+    </div>
+
+    <div v-if="agent" class="danger-zone">
+      <button
+        type="button"
+        class="btn ghost small danger"
+        data-testid="picker-delete"
+        :disabled="deleteBusy"
+        :title="deleteConfirm ? 'Click again to confirm' : `Delete agent ${agent.name}`"
+        @click="removeAgent"
+      >
+        {{ deleteBusy ? 'Deleting…' : deleteConfirm ? 'Confirm delete' : 'Delete' }}
+      </button>
+      <p v-if="deleteStatusText" class="status" data-testid="delete-status">{{ deleteStatusText }}</p>
     </div>
 
     <div v-if="agent" class="fund">
@@ -309,6 +398,13 @@ onMounted(() => {
   opacity: 0.6;
 }
 
+.pick .status {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  word-break: break-all;
+}
+
 .banner {
   margin: 0;
   padding: 0.55rem 0.65rem;
@@ -377,7 +473,15 @@ onMounted(() => {
   text-decoration: underline;
 }
 
+.mono { font-family: var(--font-mono, ui-monospace, monospace); }
+.muted { color: var(--muted); font-size: 0.85rem; }
+.chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.25rem; }
+.chip { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.22rem 0.5rem; border-radius: 999px; background: var(--surface-2, color-mix(in oklab, var(--border) 45%, var(--surface))); border: 1px solid var(--border); font-size: 0.72rem; color: var(--ink); }
+
 .fund { display: flex; flex-direction: column; gap: 0.6rem; border-top: 1px solid var(--border); padding-top: 0.75rem; }
+.danger-zone { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; padding-bottom: 0.1rem; }
+.danger-zone .status { margin: 0; font-size: 0.78rem; color: var(--muted); word-break: break-all; }
+.btn.danger { color: #ffb4b0; border-color: color-mix(in oklab, #ffb4b0 40%, var(--border)); }
 .master dt { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
 .master dd { margin: 0.15rem 0 0; font-size: 0.85rem; word-break: break-all; }
 .master dd a { color: var(--accent); text-decoration: none; }

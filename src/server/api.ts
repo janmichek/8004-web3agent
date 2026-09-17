@@ -26,6 +26,7 @@ import {
   loadAgentConfig,
   resolveToolsFromConfig,
   buildCapabilitySummary,
+  deleteAgentConfig,
 } from "../core/agent-config.js";
 import { ethers } from "ethers";
 import {
@@ -252,10 +253,15 @@ app.use(
   "*",
   cors({
     origin: isVercel ? "*" : ["http://localhost:5173", "http://127.0.0.1:5173"],
-    allowMethods: ["GET", "POST", "OPTIONS"],
+    allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type"],
   }),
 );
+
+// Return JSON (not Hono's default plain-text "404 Not Found") so the
+// frontend's res.json() never chokes on unknown routes with a cryptic
+// "unexpected non-whitespace character after JSON data" error.
+app.notFound((c) => c.json({ error: `Not found: ${c.req.method} ${c.req.path}` }, 404));
 
 app.get("/api/health", async (c) => {
   let master: { address?: string; balanceEth?: string } = {};
@@ -516,6 +522,24 @@ app.get("/api/agents/:name", (c) => {
     return c.json({ error: "Agent not found" }, 404);
   }
   return c.json({ agent: publicAgentSummary(name) });
+});
+
+app.delete("/api/agents/:name", (c) => {
+  const name = c.req.param("name");
+  if (!listExistingAgents().includes(name)) {
+    return c.json({ error: "Agent not found" }, 404);
+  }
+  if (process.env.VERCEL && !process.env.ALLOW_AGENT_DELETE) {
+    return c.json(
+      { error: "Agent deletion is disabled on Vercel (ephemeral filesystem). Delete env vars manually." },
+      403,
+    );
+  }
+  const removed = deleteAgentConfig(name);
+  if (!removed) {
+    return c.json({ error: "Agent not found" }, 404);
+  }
+  return c.json({ ok: true, name });
 });
 
 app.post("/api/agents/:name/fund", async (c) => {

@@ -89,9 +89,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...(init?.headers ?? {}),
     },
   })
-  const data = await res.json()
+  // Read as text first: backends/proxies can return non-JSON bodies
+  // (plain-text 404s, proxy errors, empty responses). Parsing those with
+  // res.json() throws a cryptic "unexpected non-whitespace character
+  // after JSON data" instead of the real error.
+  const text = await res.text()
+  let data: { error?: string } | null = null
+  if (text) {
+    try {
+      data = JSON.parse(text)
+    } catch {
+      throw new Error(`Request failed (${res.status}): ${text.slice(0, 160) || res.statusText}`)
+    }
+  }
   if (!res.ok) {
-    throw new Error(data.error || `Request failed (${res.status})`)
+    throw new Error(data?.error || `Request failed (${res.status})`)
   }
   return data as T
 }
@@ -117,6 +129,12 @@ export function createAgent(body: CreateAgentRequest) {
   return request<CreateAgentResponse>('/api/agents', {
     method: 'POST',
     body: JSON.stringify(body),
+  })
+}
+
+export function deleteAgent(name: string) {
+  return request<{ ok: boolean; name: string }>(`/api/agents/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
   })
 }
 
@@ -218,9 +236,15 @@ export function extractSuccessfulTxHash(content: string): string | null {
   return m?.[1] ?? null
 }
 
-export function scanUrlForAgent(agentId: string, chainId: number): string {
+export function scanUrlForAgent(agentId: string, chainId: number, tab?: string): string {
   const parts = agentId.split(':')
   const tokenId = parts[parts.length - 1] || agentId
   const slug = chainId === 42161 ? 'arbitrum-one' : 'arbitrum-sepolia'
-  return `https://testnet.8004scan.io/agents/${slug}/${tokenId}`
+  const base = `https://testnet.8004scan.io/agents/${slug}/${tokenId}`
+  return tab ? `${base}?tab=${tab}` : base
+}
+
+export function txScanUrl(txHash: string, chainId: number): string {
+  const base = chainId === 42161 ? 'https://arbiscan.io' : 'https://sepolia.arbiscan.io'
+  return `${base}/tx/${txHash}`
 }

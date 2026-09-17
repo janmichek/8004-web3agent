@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useAccount } from '@wagmi/vue'
-import { fetchReputation, scanUrlForAgent, submitFeedback } from '../api'
+import { fetchReputation, scanUrlForAgent, submitFeedback, txScanUrl } from '../api'
 
 const props = defineProps<{
   /** Local agent name used for the feedback API route. */
@@ -13,6 +13,8 @@ const props = defineProps<{
   operators?: string[]
   /** Optional tx hash of the successful transaction being rated (display only). */
   txHash?: string
+  /** Prefilled tag describing the rated interaction (per tool/action). */
+  initialTag?: string
 }>()
 
 const emit = defineEmits<{
@@ -32,14 +34,21 @@ const connected = computed(() => {
 
 const agentId = computed(() => props.defaultAgentId?.trim() ?? '')
 const stars = ref(5)
-const tag = ref('transfer')
-const comment = ref('')
+const tag = ref(props.initialTag ?? 'transfer')
 const busy = ref(false)
 const error = ref('')
 const resultTx = ref('')
 const scanUrl = ref('')
+const submitted = ref(false)
 const reputation = ref<{ count: number; averageValue: number } | null>(null)
 const loadingRep = ref(false)
+
+watch(
+  () => props.initialTag,
+  (t) => {
+    if (t && !submitted.value) tag.value = t
+  },
+)
 
 const value = computed(() => stars.value * 20)
 
@@ -61,14 +70,27 @@ const canSubmit = computed(() => {
     props.agentName &&
       agentId.value.trim() &&
       !busy.value &&
+      !submitted.value &&
       !blockedAsOwnerOrOperator.value,
   )
 })
 
+const chainId = computed(() => props.walletChainId ?? 421614)
+
 const previewScanUrl = computed(() => {
   const id = agentId.value.trim()
   if (!id) return ''
-  return scanUrlForAgent(id, props.walletChainId ?? 421614)
+  return scanUrlForAgent(id, chainId.value, 'feedback')
+})
+
+const feedbackScanUrl = computed(() => {
+  if (scanUrl.value) return scanUrl.value.includes('?tab=') ? scanUrl.value : `${scanUrl.value}?tab=feedback`
+  return previewScanUrl.value
+})
+
+const ratingTxUrl = computed(() => {
+  if (!resultTx.value) return ''
+  return txScanUrl(resultTx.value, chainId.value)
 })
 
 function setStars(n: number) {
@@ -92,6 +114,9 @@ async function loadReputation() {
 }
 
 watch(agentId, () => {
+  submitted.value = false
+  resultTx.value = ''
+  scanUrl.value = ''
   void loadReputation()
 })
 
@@ -106,11 +131,12 @@ async function submit() {
       agentId: agentId.value.trim(),
       value: value.value,
       tag: tag.value.trim() || undefined,
-      comment: comment.value.trim() || undefined,
     })
     resultTx.value = res.txHash
-    scanUrl.value = res.scanUrl || previewScanUrl.value
+    const base = res.scanUrl || scanUrlForAgent(agentId.value.trim(), chainId.value)
+    scanUrl.value = base.includes('?tab=') ? base : `${base}?tab=feedback`
     reputation.value = res.reputation
+    submitted.value = true
     emit('rated', { txHash: res.txHash, scanUrl: scanUrl.value })
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
@@ -123,7 +149,7 @@ void loadReputation()
 </script>
 
 <template>
-  <section class="rate" aria-label="Rate agent" data-testid="rate-agent">
+  <section class="rate rate-card" aria-label="Rate agent" data-testid="rate-agent">
     <header class="head">
       <h2>Rate agent</h2>
       <p class="sub">On-chain ERC-8004 feedback (0–100)</p>
@@ -153,7 +179,7 @@ void loadReputation()
         :class="{ on: n <= stars }"
         :aria-pressed="n === stars"
         :aria-label="`${n} star${n === 1 ? '' : 's'} (${n * 20}/100)`"
-        :disabled="busy || blockedAsOwnerOrOperator"
+        :disabled="busy || blockedAsOwnerOrOperator || submitted"
         @click="setStars(n)"
       >
         ★
@@ -169,53 +195,46 @@ void loadReputation()
         placeholder="transfer"
         spellcheck="false"
         data-testid="rate-tag"
-        :disabled="busy || blockedAsOwnerOrOperator"
-      />
-    </label>
-
-    <label class="field">
-      <span>Comment (optional)</span>
-      <input
-        v-model="comment"
-        type="text"
-        placeholder="Fast, smooth transfer"
-        data-testid="rate-comment"
-        :disabled="busy || blockedAsOwnerOrOperator"
+        :disabled="busy || blockedAsOwnerOrOperator || submitted"
       />
     </label>
 
     <button
-      class="btn primary"
+      class="btn"
+      :class="submitted ? 'rated' : 'primary'"
       type="button"
       data-testid="rate-submit"
       :disabled="!canSubmit"
       @click="submit"
     >
-      {{ busy ? 'Submitting…' : `Submit ${value}/100 rating` }}
+      <template v-if="submitted">✓ Rated</template>
+      <template v-else>{{ busy ? 'Submitting…' : `Submit ${value}/100 rating` }}</template>
     </button>
 
-    <p v-if="resultTx" class="status ok mono" data-testid="rate-result">
-      Rated ✓ {{ resultTx.slice(0, 18) }}…
-    </p>
-    <p v-if="scanUrl || (resultTx && previewScanUrl)" class="scan" data-testid="rate-scan-link">
-      View on 8004scan:
-      <a :href="scanUrl || previewScanUrl" target="_blank" rel="noopener noreferrer">{{
-        scanUrl || previewScanUrl
-      }}</a>
-    </p>
+    <ul v-if="submitted" class="links" data-testid="rate-scan-link">
+      <li v-if="ratingTxUrl">
+        <a :href="ratingTxUrl" target="_blank" rel="noopener noreferrer">View rating TX</a>
+      </li>
+      <li v-if="feedbackScanUrl">
+        <a :href="feedbackScanUrl" target="_blank" rel="noopener noreferrer">View on 8004scan</a>
+      </li>
+    </ul>
     <p v-if="error" class="status error" data-testid="rate-error">{{ error }}</p>
   </section>
 </template>
 
 <style scoped>
-.rate {
+.rate-card {
   display: flex;
   flex-direction: column;
   gap: 0.7rem;
   padding: 1rem 1.1rem;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in oklab, var(--accent) 45%, var(--border));
   border-radius: var(--radius);
-  background: var(--surface);
+  background:
+    linear-gradient(135deg, color-mix(in oklab, var(--accent) 14%, transparent), transparent 60%),
+    var(--surface-2, var(--surface));
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 12%, transparent);
   align-self: stretch;
   max-width: min(36rem, 100%);
 }
@@ -303,12 +322,27 @@ void loadReputation()
 .status.error {
   color: #ffb4b0;
 }
-.scan {
+.links {
   margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
   font-size: 0.78rem;
   word-break: break-all;
 }
-.scan a {
+.links a {
   color: var(--accent);
+}
+.btn.rated {
+  background: #1f9d55;
+  border-color: #1f9d55;
+  color: #fff;
+  cursor: default;
+  opacity: 1;
+}
+.btn.rated:disabled {
+  opacity: 1;
 }
 </style>

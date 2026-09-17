@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit",
     "setup": "npx tsx src/cli/setup.ts",
     "create-agent": "npx tsx src/cli/create-agent.ts",
+    "delete-agent": "npx tsx src/cli/delete-agent.ts",
     "deploy": "npx tsx src/cli/deploy.ts",
     "chat": "npx tsx src/cli/chat.ts",
     "serve": "npx tsx src/server/api.ts",

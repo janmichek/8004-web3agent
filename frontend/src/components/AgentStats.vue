@@ -109,9 +109,9 @@ const topTools = computed(() => {
               <span class="sub mono">{{ stats?.humanCount }} you · {{ stats?.aiCount }} agent · {{ stats?.toolCount }} tool</span>
             </div>
             <div class="stat">
-              <span class="k">Checkpoints</span>
-              <span class="v">{{ memory.checkpointCount }}</span>
-              <span class="sub mono">{{ memory.sessions.length }} session{{ memory.sessions.length !== 1 ? 's' : '' }}</span>
+              <span class="k">Sessions</span>
+              <span class="v">{{ memory.sessions.length }}</span>
+              <span class="sub mono">{{ memory.checkpointCount }} checkpoint{{ memory.checkpointCount !== 1 ? 's' : '' }}</span>
             </div>
             <div class="stat">
               <span class="k">Last active</span>
@@ -121,7 +121,6 @@ const topTools = computed(() => {
             <div class="stat">
               <span class="k">ETH moved</span>
               <span class="v mono">{{ stats && Number(stats.totalEthSent) > 0 ? (Number(stats.totalEthSent).toFixed(8).replace(/0+$/, '').replace(/\.$/, '') + ' ETH') : '—' }}</span>
-              <span class="sub mono">{{ stats?.txHashes.length ?? 0 }} tx · {{ stats?.uniqueRecipients.length ?? 0 }} recipient{{ (stats?.uniqueRecipients.length ?? 0) === 1 ? '' : 's' }}</span>
             </div>
           </div>
 
@@ -134,7 +133,7 @@ const topTools = computed(() => {
 
           <div class="lists">
             <div v-if="stats?.uniqueRecipients.length" class="list-block">
-              <span class="list-label">Recipients</span>
+              <span class="list-label">Recipients ({{ stats?.uniqueRecipients.length ?? 0 }})</span>
               <div class="addr-list">
                 <a
                   v-for="a in stats.uniqueRecipients.slice(0, 6)"
@@ -151,7 +150,7 @@ const topTools = computed(() => {
             </div>
 
             <div v-if="memory.recentTxHashes.length" class="list-block">
-              <span class="list-label">Recent txs</span>
+              <span class="list-label">Recent txs ({{ stats?.txHashes.length ?? memory.recentTxHashes.length }})</span>
               <div class="addr-list">
                 <a
                   v-for="h in memory.recentTxHashes.slice(0, 5)"
