@@ -3,7 +3,7 @@
  * @packageDocumentation
  */
 
-export { getActiveNetwork, getNetworkConfig, getProvider, getRpcUrl, getChainId, getNetworkNameByChainId } from "./core/config.js";
+export { getActiveNetwork, getNetworkConfig, getProvider, getRpcUrl, getChainId, getNetworkNameByChainId, getNetworkSlugByChainId } from "./core/config.js";
 export { getLLM } from "./core/llm.js";
 export type { LLMProvider } from "./core/llm.js";
 export {

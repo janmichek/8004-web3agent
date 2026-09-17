@@ -30,7 +30,7 @@ const connected = computed(() => {
   return wagmiAddress.value
 })
 
-const agentId = ref(props.defaultAgentId ?? '')
+const agentId = computed(() => props.defaultAgentId?.trim() ?? '')
 const stars = ref(5)
 const tag = ref('transfer')
 const comment = ref('')
@@ -40,13 +40,6 @@ const resultTx = ref('')
 const scanUrl = ref('')
 const reputation = ref<{ count: number; averageValue: number } | null>(null)
 const loadingRep = ref(false)
-
-watch(
-  () => props.defaultAgentId,
-  (v) => {
-    if (v) agentId.value = v
-  },
-)
 
 const value = computed(() => stars.value * 20)
 
@@ -133,26 +126,13 @@ void loadReputation()
   <section class="rate" aria-label="Rate agent" data-testid="rate-agent">
     <header class="head">
       <h2>Rate agent</h2>
-      <p v-if="txHash" class="sub mono">tx {{ txHash.slice(0, 12) }}… succeeded — leave a rating?</p>
-      <p v-else class="sub">On-chain ERC-8004 feedback (0–100)</p>
+      <p class="sub">On-chain ERC-8004 feedback (0–100)</p>
     </header>
 
     <p v-if="blockedAsOwnerOrOperator" class="hint warn" data-testid="rate-disabled">
       Connected wallet is an owner or operator of this agent — self-feedback is not allowed.
       Disconnect or use another wallet to rate.
     </p>
-
-    <label class="field">
-      <span>Agent ID to rate</span>
-      <input
-        v-model="agentId"
-        type="text"
-        placeholder="421614:204"
-        spellcheck="false"
-        data-testid="rate-agent-id"
-        :disabled="busy || blockedAsOwnerOrOperator"
-      />
-    </label>
 
     <p class="rep" aria-live="polite">
       <template v-if="loadingRep">Loading reputation…</template>
@@ -279,6 +259,12 @@ void loadReputation()
   margin: 0;
   font-size: 0.8rem;
   color: var(--muted);
+}
+.target {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  word-break: break-all;
 }
 .stars {
   display: flex;

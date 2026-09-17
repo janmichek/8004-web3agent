@@ -104,6 +104,17 @@ export function getChainId(network?: NetworkName): number {
 }
 
 /**
+ * Returns the URL slug (NetworkName key, e.g. "arbitrum-sepolia") for a given chain ID.
+ * Falls back to "arbitrum-sepolia" if unknown.
+ */
+export function getNetworkSlugByChainId(chainId: number): NetworkName {
+  for (const [slug, config] of Object.entries(NETWORKS)) {
+    if (config.chainId === chainId) return slug as NetworkName;
+  }
+  return "arbitrum-sepolia";
+}
+
+/**
  * Returns the human-readable network name for a given chain ID.
  * Falls back to "Chain {chainId}" if unknown.
  */

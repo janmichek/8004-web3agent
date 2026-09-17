@@ -5,19 +5,21 @@ import { z } from "zod"
 import type { Abi, AbiFunction } from "viem"
 import { getChainId } from "../../core/config.js"
 
-const EXPLORER_API: Record<number, string> = {
-  42161: "https://api.arbiscan.io/api",
-  421614: "https://api-sepolia.arbiscan.io/api",
+const CHAIN_IDS: Record<number, number> = {
+  42161: 42161,
+  421614: 421614,
 }
 
-function getExplorerApiUrl(): string {
-  return EXPLORER_API[getChainId()] ?? EXPLORER_API[42161]
+function getChainIdForExplorer(): number {
+  return CHAIN_IDS[getChainId()] ?? 42161
 }
 
 export async function fetchAbi(address: string): Promise<Abi> {
-  const apiUrl = getExplorerApiUrl()
-  const apiKey = process.env.ARBISCAN_API_KEY ?? ""
-  const url = `${apiUrl}?module=contract&action=getabi&address=${address}&apikey=${apiKey}`
+  const chainid = getChainIdForExplorer()
+  // Etherscan API V2 (V1 deprecated): https://docs.etherscan.io/v2-migration
+  const apiKey =
+    process.env.ETHERSCAN_API_KEY ?? process.env.ARBISCAN_API_KEY ?? ""
+  const url = `https://api.etherscan.io/v2/api?chainid=${chainid}&module=contract&action=getabi&address=${address}&apikey=${apiKey}`
   const res = await fetch(url)
   const data = (await res.json()) as { status: string; result: string }
   if (data.status !== "1") {

@@ -40,7 +40,6 @@ test.describe('chat reputation after successful tx', () => {
     await page.getByTestId('chat-send').click()
 
     await expect(page.getByTestId('rate-agent')).toBeVisible({ timeout: 20_000 })
-    await expect(page.getByTestId('rate-agent-id')).not.toHaveValue('')
 
     // Not connected as owner → submit enabled (signed server-side by RATER_PRIVATE_KEY)
     await expect(page.getByTestId('rate-submit')).toBeEnabled()

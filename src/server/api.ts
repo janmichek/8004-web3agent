@@ -632,7 +632,7 @@ app.post("/api/agents/:name/feedback", async (c) => {
 
   try {
     const { giveFeedback } = await import("../core/reputation.js");
-    const { getNetworkNameByChainId, getChainId } = await import("../core/config.js");
+    const { getNetworkSlugByChainId, getChainId } = await import("../core/config.js");
     const result = await giveFeedback({
       agentId,
       value: body.value,
@@ -643,13 +643,14 @@ app.post("/api/agents/:name/feedback", async (c) => {
     const chainId = summary.walletChainId ?? getChainId();
     let networkSlug = "arbitrum-sepolia";
     try {
-      networkSlug = getNetworkNameByChainId(chainId);
+      networkSlug = getNetworkSlugByChainId(chainId);
     } catch { /* keep default */ }
     const numericId = String(agentId).split(":").pop();
+    const base = chainId === 42161 ? "https://8004scan.io" : "https://testnet.8004scan.io";
     return c.json({
       ok: true,
       ...result,
-      scanUrl: `https://8004scan.io/agents/${networkSlug}/${numericId}`,
+      scanUrl: `${base}/agents/${networkSlug}/${numericId}`,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

@@ -50,6 +50,13 @@ watch(
 )
 
 watch(
+  () => bubbles.value.length,
+  () => {
+    void scrollBottom()
+  },
+)
+
+watch(
   () => props.recalledSession,
   (session) => {
     if (!session) {
@@ -98,22 +105,36 @@ async function send() {
   try {
     const res = await chatWithAgent(name, text)
     let lastSuccessTx: string | null = null
+    let sawSuccessfulTool = false
+    const toolNames: string[] = []
     for (const event of res.events) {
       if (event.type === 'message') {
         bubbles.value.push({ kind: 'agent', text: event.content })
       } else {
         bubbles.value.push({ kind: 'event', event })
+        if (event.type === 'tool_call') {
+          toolNames.push(event.name)
+        }
         if (event.type === 'tool_result') {
           const tx = extractSuccessfulTxHash(event.content)
           if (tx) lastSuccessTx = tx
+          // Any non-error tool output counts as a successful interaction,
+          // including reads like fetch_contract_abi / get_token_balance
+          // which never produce a tx hash.
+          if (!/^\s*Error:/i.test(event.content)) {
+            sawSuccessfulTool = true
+          }
         }
       }
     }
     if (!res.events.some((e) => e.type === 'message') && res.reply) {
       bubbles.value.push({ kind: 'agent', text: res.reply })
     }
-    if (lastSuccessTx && props.agent?.agentId) {
-      bubbles.value.push({ kind: 'rate', txHash: lastSuccessTx })
+    // Don't re-prompt for a rating right after the user just submitted one.
+    const onlyFeedbackTools =
+      toolNames.length > 0 && toolNames.every((n) => n === 'give_feedback' || n === 'get_reputation')
+    if (sawSuccessfulTool && !onlyFeedbackTools && props.agent?.agentId) {
+      bubbles.value.push({ kind: 'rate', txHash: lastSuccessTx ?? '' })
     }
     emit('chat')
   } catch (err) {
@@ -130,8 +151,12 @@ async function send() {
 
 async function scrollBottom() {
   await nextTick()
-  if (scroller.value) {
-    scroller.value.scrollTop = scroller.value.scrollHeight
+  await new Promise((r) => requestAnimationFrame(() => r(null)))
+  const el = scroller.value
+  if (el) {
+    el.scrollTo({ top: el.scrollHeight, behavior: 'auto' })
+    // Fallback for browsers where scrollTo is clamped before layout settles
+    el.scrollTop = el.scrollHeight
   }
 }
 
