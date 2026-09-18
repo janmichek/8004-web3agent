@@ -15,6 +15,8 @@ const props = defineProps<{
   txHash?: string
   /** Prefilled tag describing the rated interaction (per tool/action). */
   initialTag?: string
+  /** Prefilled full service URL the rating applies to (origin-aware). */
+  initialEndpoint?: string
 }>()
 
 const emit = defineEmits<{
@@ -34,11 +36,17 @@ const connected = computed(() => {
 
 const agentId = computed(() => props.defaultAgentId?.trim() ?? '')
 const stars = ref(5)
-const tag = ref(props.initialTag ?? 'transfer')
+/** Quality rating context (stored as tag2 — tag1 is always 'starred'). */
+const tag = ref(props.initialTag ?? 'starred')
+/** Full service URL the rating applies to (origin-aware). */
+const endpoint = ref(props.initialEndpoint ?? '')
+/** Optional user-written review (public: tag2 fallback or IPFS feedback file). */
+const comment = ref('')
 const busy = ref(false)
 const error = ref('')
 const resultTx = ref('')
 const scanUrl = ref('')
+const feedbackURI = ref('')
 const submitted = ref(false)
 const reputation = ref<{ count: number; averageValue: number } | null>(null)
 const loadingRep = ref(false)
@@ -47,6 +55,13 @@ watch(
   () => props.initialTag,
   (t) => {
     if (t && !submitted.value) tag.value = t
+  },
+)
+
+watch(
+  () => props.initialEndpoint,
+  (e) => {
+    if (e !== undefined && !submitted.value) endpoint.value = e
   },
 )
 
@@ -117,6 +132,7 @@ watch(agentId, () => {
   submitted.value = false
   resultTx.value = ''
   scanUrl.value = ''
+  feedbackURI.value = ''
   void loadReputation()
 })
 
@@ -126,13 +142,18 @@ async function submit() {
   error.value = ''
   resultTx.value = ''
   scanUrl.value = ''
+  feedbackURI.value = ''
   try {
     const res = await submitFeedback(props.agentName, {
       agentId: agentId.value.trim(),
       value: value.value,
-      tag: tag.value.trim() || undefined,
+      // Backend forces tag1='starred'; this is kept as tag2 context.
+      tag: tag.value.trim() || 'starred',
+      endpoint: endpoint.value.trim() || undefined,
+      comment: comment.value.trim() || undefined,
     })
     resultTx.value = res.txHash
+    feedbackURI.value = res.feedbackURI ?? ''
     const base = res.scanUrl || scanUrlForAgent(agentId.value.trim(), chainId.value)
     scanUrl.value = base.includes('?tab=') ? base : `${base}?tab=feedback`
     reputation.value = res.reputation
@@ -187,14 +208,16 @@ void loadReputation()
       <span class="val mono">{{ value }}/100</span>
     </div>
 
+    <!-- tag/endpoint are prefilled from chat (initialTag/initialEndpoint) and submitted hidden -->
+
     <label class="field">
-      <span>Tag</span>
+      <span>Comment (optional, public)</span>
       <input
-        v-model="tag"
+        v-model="comment"
         type="text"
-        placeholder="transfer"
-        spellcheck="false"
-        data-testid="rate-tag"
+        placeholder="Fast, smooth transfer"
+        maxlength="280"
+        data-testid="rate-comment"
         :disabled="busy || blockedAsOwnerOrOperator || submitted"
       />
     </label>

@@ -48,6 +48,12 @@ export interface RegisterAgentOptions {
   privateKey: string;
   /** Agent's wallet address. */
   walletAddress: string;
+  /** Optional image URI (https:// or ipfs://) for the agent metadata. */
+  image?: string;
+  /** Optional communication endpoints pinned into the IPFS metadata. */
+  endpoints?: { type: string; value: string }[];
+  /** Optional free-form metadata (e.g. actions/tools) pinned into the IPFS file. */
+  metadata?: Record<string, unknown>;
 }
 
 /** Result returned after successful ERC-8004 registration. */
@@ -56,6 +62,8 @@ export interface RegistrationResult {
   agentId: string;
   /** Transaction hash of the registration. */
   txHash: string;
+  /** On-chain token URI (ipfs://<cid> in IPFS mode, https://... in HTTP mode). */
+  agentURI: string;
 }
 
 /** Parsed SKILL.md file from an agent's skills directory. */

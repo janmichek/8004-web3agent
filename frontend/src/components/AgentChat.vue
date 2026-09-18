@@ -17,7 +17,7 @@ type Bubble =
   | { kind: 'user'; text: string }
   | { kind: 'agent'; text: string }
   | { kind: 'event'; event: ChatEvent }
-  | { kind: 'rate'; txHash: string; tag: string }
+  | { kind: 'rate'; txHash: string; tag: string; endpoint: string }
   | { kind: 'error'; text: string }
 
 const props = defineProps<{
@@ -134,7 +134,12 @@ async function send() {
     const onlyFeedbackTools =
       toolNames.length > 0 && toolNames.every((n) => n === 'give_feedback' || n === 'get_reputation')
     if (sawSuccessfulTool && !onlyFeedbackTools && props.agent?.agentId) {
-      bubbles.value.push({ kind: 'rate', txHash: lastSuccessTx ?? '', tag: tagForTools(toolNames) })
+      bubbles.value.push({
+        kind: 'rate',
+        txHash: lastSuccessTx ?? '',
+        tag: tagForTools(toolNames),
+        endpoint: endpointForTools(name, toolNames),
+      })
     }
     emit('chat')
   } catch (err) {
@@ -150,12 +155,23 @@ async function send() {
 }
 
 function tagForTools(toolNames: string[]): string {
+  // Ratings are always quality (tag1='starred'); this is tag2 context.
   const pick = toolNames.find((n) => n !== 'give_feedback' && n !== 'get_reputation') ?? ''
   if (pick === 'send_eth') return 'transfer'
   if (pick === 'get_token_balance') return 'balance'
   if (pick === 'fetch_contract_abi') return 'contract-abi'
   if (pick === 'call_contract') return 'contract-call'
   return 'execution'
+}
+
+function endpointForTools(agentName: string, toolNames: string[]): string {
+  // Full service URL the rating applies to — origin-aware so localhost
+  // and Vercel deployments record their own address.
+  // e.g. http://localhost:5173/api/agents/demo/chat#get_token_balance
+  const pick = toolNames.find((n) => n !== 'give_feedback' && n !== 'get_reputation') ?? ''
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  const base = `${origin}/api/agents/${encodeURIComponent(agentName)}/chat`
+  return pick ? `${base}#${pick}` : base
 }
 
 async function scrollBottom() {
@@ -200,6 +216,7 @@ function onKey(e: KeyboardEvent) {
             :operators="agent.operators"
             :tx-hash="b.txHash"
             :initial-tag="b.tag"
+            :initial-endpoint="b.endpoint"
           />
         </div>
         <div v-else-if="b.kind === 'event'" class="event mono" data-testid="chat-event">

@@ -27,11 +27,11 @@ describe.runIf(RUN_E2E)("reputation e2e (testnet, spends dust)", () => {
     const txHash = await sendEthTool.invoke({ to: to!, amount: "0.00001" })
     expect(txHash).not.toContain("Error")
 
-    // 2. Rate after successful transaction
+    // 2. Rate after successful transaction (always quality/starred)
     const feedbackTx = await giveFeedbackTool.invoke({
       agentId: agentId!,
       value: 90,
-      tag: "transfer",
+      tag: "starred",
       comment: "e2e test: dust transfer succeeded",
     })
     expect(feedbackTx).not.toContain("Error")

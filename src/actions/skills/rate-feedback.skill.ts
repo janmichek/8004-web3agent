@@ -13,7 +13,7 @@ export const rateFeedbackSkill: Skill = {
     - Proactively offer to rate the counterparty agent: "Transaction succeeded (tx ...). Want me to leave an on-chain rating? If so, give me their agent ID (chainId:tokenId) and a score 0-100."
     - If the user already provided the agent ID and a score/sentiment, call give_feedback immediately, do NOT ask for confirmation for values <= 100.
     - Map sentiment to score: very happy 90-100, satisfied 75-89, neutral 50-74, dissatisfied 0-49.
-    - Pass a tag describing the interaction (e.g. 'transfer', 'execution') and a short comment when the user gives one.
+    - Ratings are always quality ratings (tag1='starred', 0-100); optionally pass the interaction as tag (e.g. 'transfer', 'execution') — it is stored as tag2 — and a short comment when the user gives one.
     - After success, return the feedback tx hash plus the updated reputation summary via get_reputation when useful.
     - If feedback fails, return the error clearly and do not retry automatically.
 

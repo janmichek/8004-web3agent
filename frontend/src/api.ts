@@ -26,6 +26,7 @@ export type FeedbackResult = {
   rater: string
   reputation: ReputationSummary
   scanUrl: string
+  feedbackURI?: string
 }
 
 export type ChatEvent =
@@ -160,7 +161,7 @@ export function fundAgent(name: string, amountEth: string) {
 
 export function submitFeedback(
   agentName: string,
-  body: { agentId?: string; value: number; tag?: string; comment?: string },
+  body: { agentId?: string; value: number; tag?: string; endpoint?: string; comment?: string },
 ) {
   return request<FeedbackResult>(`/api/agents/${encodeURIComponent(agentName)}/feedback`, {
     method: 'POST',

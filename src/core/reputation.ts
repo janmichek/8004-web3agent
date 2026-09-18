@@ -9,6 +9,11 @@ import { getActiveNetwork, getNetworkConfig, getRpcUrl } from "./config.js";
 export interface GiveFeedbackOptions {
   agentId: string;
   value: number;
+  /**
+   * Interaction context (e.g. 'transfer', 'execution').
+   * Always stored as tag2 — tag1 is forced to 'starred' so feedback
+   * counts as an ERC-8004 quality rating (shows as QUALITY RATING x/100 on 8004scan).
+   */
   tag?: string;
   endpoint?: string;
   comment?: string;
@@ -20,6 +25,7 @@ export interface GiveFeedbackResult {
   txHash: string;
   agentId: string;
   value: number;
+  feedbackURI?: string;
 }
 
 export interface ReputationSummary {
@@ -30,7 +36,20 @@ export interface ReputationSummary {
 function buildSdk(privateKey: string): SDK {
   const network = getActiveNetwork();
   const config = getNetworkConfig(network);
-  return new SDK({ chainId: config.chainId, rpcUrl: getRpcUrl(), privateKey });
+  const pinataJwt = process.env.PINATA_JWT?.trim();
+  const ipfsNodeUrl = process.env.IPFS_NODE_URL?.trim();
+  return new SDK({
+    chainId: config.chainId,
+    rpcUrl: getRpcUrl(),
+    privateKey,
+    // Without this the SDK has no IPFS client and giveFeedback throws
+    // "feedbackFile provided, but no IPFS backend is configured".
+    ...(pinataJwt
+      ? { ipfs: "pinata" as const, pinataJwt }
+      : ipfsNodeUrl
+        ? { ipfs: "node" as const, ipfsNodeUrl }
+        : {}),
+  });
 }
 
 /** Clamp rating to ERC-8004 0-100 range. */
@@ -56,23 +75,33 @@ export async function giveFeedback(options: GiveFeedbackOptions): Promise<GiveFe
 
   const sdk = buildSdk(privateKey);
   // Off-chain feedback files need Pinata/IPFS; skip when not configured so ratings still land on-chain.
-  const hasIpfs = Boolean(process.env.PINATA_JWT || process.env.IPFS_NODE_URL);
+  const hasIpfs = Boolean(process.env.PINATA_JWT?.trim() || process.env.IPFS_NODE_URL?.trim());
+  // SDK expects rich text in `text` (it reads back `feedbackFile.text` into result.text).
   const feedbackFile =
-    comment && hasIpfs ? sdk.prepareFeedbackFile({ comment } as never) : undefined;
-  // If we cannot store the comment off-chain, fold a short note into tag2 via the tag field only.
-  const tag1 = tag || (comment && !hasIpfs ? comment.slice(0, 32) : undefined);
+    comment && hasIpfs ? sdk.prepareFeedbackFile({ text: comment } as never) : undefined;
+  // Always a quality rating: tag1='starred' (0-100). Keep the caller's
+  // interaction tag / short comment as tag2 for traceability.
+  const tag1 = "starred";
+  const tag2 =
+    (tag && tag !== "starred" ? tag : comment && !hasIpfs ? comment : undefined)?.slice(0, 32) ||
+    undefined;
   const handle = await sdk.giveFeedback(
     agentId as never,
     value,
     tag1,
-    undefined,
+    tag2,
     endpoint,
     feedbackFile as never,
   );
-  await handle.waitMined();
+  const mined = await handle.waitMined();
   const txHash = (handle as { hash?: string }).hash ?? "unknown";
-  console.log(`[reputation] Feedback ${value}/100 -> ${agentId} tx=${txHash}`);
-  return { txHash: String(txHash), agentId, value };
+  // waitMined resolves { receipt, result } where result.fileURI is ipfs://<cid>.
+  const feedbackURI = (mined as { result?: { fileURI?: string } })?.result?.fileURI;
+  console.log(
+    `[reputation] Feedback ${value}/100 [starred] -> ${agentId} tx=${txHash}` +
+      (feedbackURI ? ` uri=${feedbackURI}` : ""),
+  );
+  return { txHash: String(txHash), agentId, value, ...(feedbackURI ? { feedbackURI } : {}) };
 }
 
 export async function getReputationSummary(agentId: string, tag?: string): Promise<ReputationSummary> {

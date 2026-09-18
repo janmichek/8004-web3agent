@@ -485,9 +485,13 @@ app.post("/api/agents", async (c) => {
         description: config.description,
         privateKey: agentWallet.privateKey,
         walletAddress: agentWallet.address,
+        metadata: {
+          actions: selectedActions,
+          tools: allToolNames,
+        },
       });
       config.agentId = reg.agentId;
-      config.agentURI = `https://8004scan.com/api/agent/${agentWallet.address}`;
+      config.agentURI = reg.agentURI;
       config.updatedAt = Math.floor(Date.now() / 1000);
       saveAgentConfig(name, config);
       steps.push({ step: "register", ok: true, detail: String(reg.agentId) });
@@ -660,6 +664,7 @@ app.post("/api/agents/:name/feedback", async (c) => {
     const result = await giveFeedback({
       agentId,
       value: body.value,
+      // tag1 is forced to 'starred' in giveFeedback; body.tag is kept as tag2 context.
       tag: body.tag,
       endpoint: body.endpoint,
       comment: body.comment,

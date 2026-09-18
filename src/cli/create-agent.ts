@@ -371,10 +371,14 @@ async function main(): Promise<void> {
         description: config.description,
         privateKey: agentWallet.privateKey,
         walletAddress: agentWallet.address,
+        metadata: {
+          actions: state.actions,
+          tools: [...new Set([...state.actionToolNames, ...state.tools])],
+        },
       })
       // Persist agentId and URI back into the config
       config.agentId = reg.agentId
-      config.agentURI = `https://8004scan.com/api/agent/${agentWallet.address}`
+      config.agentURI = reg.agentURI
       config.updatedAt = Math.floor(Date.now() / 1000)
       saveAgentConfig(agentName, config)
       s.stop(`Registered. Agent ID: ${reg.agentId}`)

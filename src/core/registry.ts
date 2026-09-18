@@ -18,17 +18,17 @@ import { getActiveNetwork, getNetworkConfig, getRpcUrl } from "./config.js";
 /**
  * Registers an agent on the ERC-8004 Identity Registry.
  *
- * By default, uses HTTP registration mode (no IPFS required, works out of the
- * box on testnet). To switch to Pinata IPFS mode, set the PINATA_JWT
- * environment variable and change the registration call from
- * `agent.registerHTTP(...)` to `agent.registerIPFS()`.
+ * Uses Pinata IPFS mode whenever PINATA_JWT (or IPFS_NODE_URL) is set, so the
+ * on-chain tokenURI is `ipfs://<cid>` with resolvable name/description
+ * metadata visible on 8004scan. Falls back to HTTP mode only when no IPFS
+ * backend is configured.
  *
  * NOTE: The @blockbyvlog/agent0-sdk is in alpha. Registration is best-effort
  * and may fail on certain networks or under load. Callers should always wrap
  * this function in try/catch.
  *
  * @param options - Registration options.
- * @returns The registration result with agent ID and transaction hash.
+ * @returns The registration result with agent ID, transaction hash and agentURI.
  * @throws If registration fails (SDK error, network error, etc.).
  *
  * @example
@@ -40,7 +40,7 @@ import { getActiveNetwork, getNetworkConfig, getRpcUrl } from "./config.js";
  *     privateKey: wallet.privateKey,
  *     walletAddress: wallet.address,
  *   });
- *   console.log(`Registered as agent #${result.agentId}`);
+ *   console.log(`Registered as agent #${result.agentId} (${result.agentURI})`);
  * } catch (err) {
  *   console.error("Registration failed:", err);
  * }
@@ -58,36 +58,78 @@ export async function registerAgent(
   // Get the RPC URL
   const rpcUrl = getRpcUrl();
 
+  const pinataJwt = process.env.PINATA_JWT?.trim();
+  const ipfsNodeUrl = process.env.IPFS_NODE_URL?.trim();
+  const useIpfs = Boolean(pinataJwt || ipfsNodeUrl);
+
   // Initialize the SDK with chain configuration and the agent's private key.
-  // To switch to Pinata IPFS mode:
-  // 1. Set PINATA_JWT in your .env
-  // 2. Add `ipfs: "pinata"` and `pinataJwt: process.env.PINATA_JWT` below
-  // 3. Change `agent.registerHTTP(...)` to `agent.registerIPFS()` below
   const sdk = new SDK({
     chainId: config.chainId,
     rpcUrl,
     privateKey,
-    // ipfs: "pinata",                    // Uncomment for IPFS mode
-    // pinataJwt: process.env.PINATA_JWT, // Uncomment for IPFS mode
+    ...(pinataJwt
+      ? { ipfs: "pinata" as const, pinataJwt }
+      : ipfsNodeUrl
+        ? { ipfs: "node" as const, ipfsNodeUrl }
+        : {}),
   });
 
   // Create the agent metadata
-  const agent = sdk.createAgent(name, description);
+  const agent = sdk.createAgent(name, description, options.image);
 
-  // Register using HTTP mode (default, no IPFS required)
-  // For IPFS mode, replace this with: const handle = await agent.registerIPFS();
+  // Pin capabilities/endpoints into the registration file so they land in IPFS.
+  if (options.metadata && Object.keys(options.metadata).length > 0) {
+    agent.setMetadata(options.metadata);
+  }
+  if (options.endpoints && options.endpoints.length > 0) {
+    const file = agent.getRegistrationFile() as unknown as {
+      endpoints?: { type: string; value: string }[];
+    };
+    file.endpoints = options.endpoints as never;
+  }
+  agent.setActive(true);
+
+  if (useIpfs) {
+    // IPFS mode: tokenURI becomes ipfs://<cid> with full metadata JSON.
+    // First-time registration sends 2 txs internally (register + setAgentURI).
+    const handle = await agent.registerIPFS();
+
+    // waitMined resolves { receipt, result } where result is the
+    // RegistrationFile containing agentURI = ipfs://<cid>.
+    const mined = (await handle.waitMined()) as unknown as {
+      result?: { agentURI?: string };
+    };
+    const agentId = agent.agentId ?? "unknown";
+    const txHash = (handle as unknown as { hash?: string }).hash ?? "unknown";
+    const agentURI =
+      mined?.result?.agentURI ?? agent.agentURI ?? "unknown";
+
+    console.log(`[registry] Agent registered successfully (IPFS mode).`);
+    console.log(`[registry]   Agent ID: ${agentId}`);
+    console.log(`[registry]   Token URI: ${agentURI}`);
+    console.log(`[registry]   TX Hash: ${txHash}`);
+    console.log(`[registry]   View on 8004scan: https://8004scan.com/agent/${agentId}`);
+
+    return { agentId: String(agentId), txHash: String(txHash), agentURI: String(agentURI) };
+  }
+
+  // HTTP fallback (no IPFS configured): tokenURI has no pinned metadata,
+  // so 8004scan shows the agent without name/description.
+  console.warn(
+    "[registry] PINATA_JWT/ IPFS_NODE_URL not set — falling back to HTTP mode (no IPFS metadata)."
+  );
   const agentHttpUri = `https://8004scan.com/api/agent/${walletAddress}`;
   const handle = await agent.registerHTTP(agentHttpUri);
 
   // Wait for the transaction to be mined
   await handle.waitMined();
   const agentId = agent.agentId ?? "unknown";
-  const txHash = handle.hash ?? "unknown";
+  const txHash = (handle as unknown as { hash?: string }).hash ?? "unknown";
 
   console.log(`[registry] Agent registered successfully.`);
   console.log(`[registry]   Agent ID: ${agentId}`);
   console.log(`[registry]   TX Hash: ${txHash}`);
   console.log(`[registry]   View on 8004scan: https://8004scan.com/agent/${agentId}`);
 
-  return { agentId: String(agentId), txHash: String(txHash) };
+  return { agentId: String(agentId), txHash: String(txHash), agentURI: agentHttpUri };
 }

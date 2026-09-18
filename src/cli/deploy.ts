@@ -201,8 +201,11 @@ async function main(): Promise<void> {
         description: `Agent ${agentName}`,
         privateKey: agentWallet.privateKey,
         walletAddress: agentWallet.address,
+        metadata: {
+          skills: discoverAgentSkills(agentName).map((c) => c.name),
+        },
       });
-      s.stop(`Registered. Agent ID: ${reg.agentId}`);
+      s.stop(`Registered. Agent ID: ${reg.agentId} (${reg.agentURI})`);
     } catch (err) {
       s.stop(`Registration failed: ${err instanceof Error ? err.message : err}`);
     }

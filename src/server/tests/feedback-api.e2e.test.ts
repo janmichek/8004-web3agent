@@ -31,7 +31,7 @@ describe.runIf(RUN_E2E)("feedback API e2e (testnet)", () => {
       body: JSON.stringify({
         ...(targetAgentId ? { agentId: targetAgentId } : {}),
         value: 85,
-        tag: "e2e",
+        tag: "starred",
         comment: "e2e api test rating",
       }),
     });

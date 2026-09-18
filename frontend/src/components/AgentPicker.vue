@@ -43,6 +43,12 @@ const masterScanUrl = computed(() => {
   return `${base}/address/${masterAddress.value}`
 })
 
+const metadataUrl = computed(() => {
+  const uri = props.agent?.agentURI
+  if (!uri?.startsWith('ipfs://')) return null
+  return `https://ipfs.io/ipfs/${uri.slice(7)}`
+})
+
 const canSend = computed(() => {
   if (!props.agent?.name || !addr.value || fundBusy.value) return false
   const n = Number(fundAmount.value)
@@ -262,6 +268,18 @@ onMounted(() => {
           <dd class="mono">
             <a v-if="scanUrl && scanId" :href="scanUrl" target="_blank" rel="noopener noreferrer">#{{ scanId }} ↗</a>
             <span v-else>#{{ agent.agentId }}</span>
+          </dd>
+        </div>
+        <div v-if="metadataUrl && agent.agentURI">
+          <dt>Metadata</dt>
+          <dd class="mono">
+            <a
+              :href="metadataUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              :title="agent.agentURI"
+              >{{ shortAddr(agent.agentURI) }} ↗</a
+            >
           </dd>
         </div>
         <div v-if="agent.walletAddress">

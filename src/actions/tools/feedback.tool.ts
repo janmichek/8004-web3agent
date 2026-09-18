@@ -9,7 +9,7 @@ function raterPrivateKey(): string | undefined {
 }
 
 /**
- * @notice Submit an ERC-8004 reputation rating (0-100) for an agent,
+ * @notice Submit an ERC-8004 quality rating (0-100, tag1='starred') for an agent,
  * typically called after a successful transaction with that agent/counterparty.
  * Prefer RATER_PRIVATE_KEY so the signer is not the agent owner/operator.
  * Never throws; returns tx hash on success or error string on failure.
@@ -17,12 +17,13 @@ function raterPrivateKey(): string | undefined {
 export const giveFeedbackTool: DynamicStructuredTool = new DynamicStructuredTool({
   name: "give_feedback",
   description:
-    "Rate an ERC-8004 agent after a successful transaction. " +
-    "value is 0-100 (e.g. 90 = satisfied). Returns the feedback tx hash on success.",
+    "Rate an ERC-8004 agent after a successful transaction as a quality rating. " +
+    "value is 0-100 (e.g. 90 = satisfied, stars = value/20). Always stored with tag1='starred' " +
+    "so it shows as QUALITY RATING on 8004scan. Returns the feedback tx hash on success.",
   schema: z.object({
     agentId: z.string().describe("ERC-8004 agent ID, e.g. '421614:204'"),
     value: z.number().describe("Rating 0-100"),
-    tag: z.string().optional().describe("Optional category tag, e.g. 'execution', 'transfer'"),
+    tag: z.string().optional().describe("Optional interaction context stored as tag2, e.g. 'transfer'"),
     endpoint: z.string().optional().describe("Optional endpoint the rating applies to"),
     comment: z.string().optional().describe("Optional short review comment"),
   }),
@@ -33,7 +34,7 @@ export const giveFeedbackTool: DynamicStructuredTool = new DynamicStructuredTool
         return "Error: RATER_PRIVATE_KEY (or AGENT_PRIVATE_KEY) environment variable is not set"
       }
       const result = await giveFeedback({ agentId, value, tag, endpoint, comment, privateKey })
-      return result.txHash
+      return result.feedbackURI ? `${result.txHash} (feedback: ${result.feedbackURI})` : result.txHash
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       const short = message.length > 300 ? message.slice(0, 300) + "..." : message
